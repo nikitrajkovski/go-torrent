@@ -1,0 +1,6 @@
+info:
+  productName: TorrentGo
+  productIdentifier: io.torrentgo.app
+  productVersion: 0.1.0
+  companyName: TorrentGo Contributors
+  productDescription: A lightweight BitTorrent desktop client

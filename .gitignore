@@ -1,0 +1,22 @@
+# Go
+/bin/
+/build/bin/
+*.exe
+*.test
+*.out
+
+# Frontend dependencies and generated output
+/frontend/node_modules/
+/frontend/dist/*
+!/frontend/dist/.gitkeep
+/frontend/bindings/
+*.tsbuildinfo
+
+# Editors and operating system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local application state (created once TorrentGo has functionality)
+.torrentgo/
