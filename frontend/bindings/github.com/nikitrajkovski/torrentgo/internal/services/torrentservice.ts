@@ -30,6 +30,15 @@ export function AddTorrentFile(): $CancellablePromise<void> {
 }
 
 /**
+ * AddTorrentPath is used by the native window file-drop handler. The engine
+ * performs the same extension, size, metainfo, and destination checks as the
+ * file-picker route.
+ */
+export function AddTorrentPath(path: string): $CancellablePromise<void> {
+    return $Call.ByID(650761242, path);
+}
+
+/**
  * ChooseDownloadDirectory presents a native folder selector and persists the
  * selected existing folder. Cancellation leaves the current setting unchanged.
  */

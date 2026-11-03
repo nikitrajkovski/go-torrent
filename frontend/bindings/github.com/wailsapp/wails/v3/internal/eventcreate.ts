@@ -12,11 +12,13 @@ import * as models$0 from "../../../../nikitrajkovski/torrentgo/internal/models/
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
-        "torrentgo:torrents": $$createType0,
+        "torrentgo:torrent-import": $$createType0,
+        "torrentgo:torrents": $$createType1,
     }));
 }
 
 // Private type creation functions
-const $$createType0 = models$0.TorrentSnapshot.createFrom;
+const $$createType0 = models$0.TorrentImportResult.createFrom;
+const $$createType1 = models$0.TorrentSnapshot.createFrom;
 
 configure();

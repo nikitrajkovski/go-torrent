@@ -10,11 +10,15 @@ import { Create as $Create } from "@wailsio/runtime";
  */
 export class Settings {
     "downloadDirectory": string;
+    "theme": string;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
         if (!("downloadDirectory" in $$source)) {
             this["downloadDirectory"] = "";
+        }
+        if (!("theme" in $$source)) {
+            this["theme"] = "";
         }
 
         Object.assign(this, $$source);
@@ -26,6 +30,32 @@ export class Settings {
     static createFrom($$source: any = {}): Settings {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new Settings($$parsedSource as Partial<Settings>);
+    }
+}
+
+/**
+ * TorrentImportResult reports the outcome of a native file-drop import without
+ * exposing the user's local path to the frontend or logs.
+ */
+export class TorrentImportResult {
+    "added": number;
+    "error"?: string;
+
+    /** Creates a new TorrentImportResult instance. */
+    constructor($$source: Partial<TorrentImportResult> = {}) {
+        if (!("added" in $$source)) {
+            this["added"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TorrentImportResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TorrentImportResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TorrentImportResult($$parsedSource as Partial<TorrentImportResult>);
     }
 }
 

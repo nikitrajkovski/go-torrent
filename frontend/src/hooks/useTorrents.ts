@@ -41,5 +41,13 @@ export function useTorrents() {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    const unsubscribe = torrentService.subscribeImports((result) => {
+      if (result.error) setError(result.error);
+      void refresh().catch((cause: unknown) => setError(errorMessage(cause)));
+    });
+    return unsubscribe;
+  }, [refresh]);
+
   return { error, loading, refresh, setError, setSettings, settings, snapshot };
 }

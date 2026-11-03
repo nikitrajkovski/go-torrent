@@ -11,7 +11,7 @@ func TestStorePersistsSettings(t *testing.T) {
 	t.Parallel()
 	downloadDirectory := t.TempDir()
 	store := NewStoreAt(filepath.Join(t.TempDir(), "settings.json"))
-	want := models.Settings{DownloadDirectory: downloadDirectory}
+	want := models.Settings{DownloadDirectory: downloadDirectory, Theme: "light"}
 
 	if err := store.Save(want); err != nil {
 		t.Fatalf("Save() error = %v", err)

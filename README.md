@@ -4,7 +4,7 @@ TorrentGo is a lightweight, local-first BitTorrent desktop client for Windows, L
 
 ## Status
 
-**Phases 1 and 2 are implemented.** TorrentGo can add legal `.torrent` files and magnet links, download to a selected local folder, seed completed content, show real transfer progress and rates, and recover its local torrent list after a restart.
+**Phases 1 and 2 are implemented; Phase 3 is in progress.** TorrentGo can add legal `.torrent` files and magnet links, download to a selected local folder, seed completed content, show real transfer progress and rates, and recover its local torrent list after a restart.
 
 There is no telemetry, advertising, cloud download service, or hidden background process.
 
@@ -37,6 +37,8 @@ TorrentGo/
 - Remove deliberately preserves downloaded payload files.
 - Persist local settings and torrent source records in the operating system configuration directory. `.torrent` metainfo is kept locally so recovery does not depend on its original path.
 - Push a complete snapshot to the UI once per second instead of polling each torrent independently.
+- Provide sidebar filters, search, a selected-torrent general-details panel, and a real settings screen with a persisted light/dark theme preference.
+- Accept `.torrent` files dropped from the native file manager onto the application window.
 
 ## Prerequisites
 
@@ -76,6 +78,6 @@ Malformed `.torrent` inputs are size-limited and parsed in Go before they reach 
 
 ## Current limitations
 
-- Per-file selection, bandwidth limits, concurrent-download limits, detailed peer/tracker tabs, drag-and-drop, notifications, tray behavior, installers, and light mode are planned later phases.
+- Per-file selection, bandwidth limits, concurrent-download limits, detailed peer/tracker tabs, context menus, notifications, tray behavior, and installers are planned later phases.
 - Downloaded files cannot be removed from the UI yet. This prevents accidental deletion from a destination folder shared by multiple torrents.
 - TorrentGo has no anonymity layer or proxy configuration yet.

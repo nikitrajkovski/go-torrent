@@ -14,6 +14,11 @@ import (
 
 const applicationDirectory = "torrentgo"
 
+const (
+	themeDark  = "dark"
+	themeLight = "light"
+)
+
 // Store persists user preferences in the operating system configuration
 // directory. It deliberately contains no torrent content or credentials.
 type Store struct {
@@ -97,7 +102,7 @@ func defaultSettings() (models.Settings, error) {
 	if err := os.MkdirAll(downloadDirectory, 0o755); err != nil {
 		return models.Settings{}, fmt.Errorf("create default download directory: %w", err)
 	}
-	return models.Settings{DownloadDirectory: downloadDirectory}, nil
+	return models.Settings{DownloadDirectory: downloadDirectory, Theme: themeDark}, nil
 }
 
 func validate(settings models.Settings) error {
@@ -114,6 +119,9 @@ func validate(settings models.Settings) error {
 	}
 	if !info.IsDir() {
 		return errors.New("download directory is not a directory")
+	}
+	if settings.Theme != themeDark && settings.Theme != themeLight {
+		return errors.New("theme must be dark or light")
 	}
 	return nil
 }

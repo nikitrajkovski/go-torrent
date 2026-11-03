@@ -1,7 +1,8 @@
 import { Events } from "@wailsio/runtime";
-import { TorrentgoTorrents } from "../../bindings/events";
+import { TorrentgoTorrentImport, TorrentgoTorrents } from "../../bindings/events";
 import {
   Settings,
+  TorrentImportResult,
   TorrentSnapshot,
 } from "../../bindings/github.com/nikitrajkovski/torrentgo/internal/models/models";
 import {
@@ -16,6 +17,7 @@ import {
   ResumeAll,
   ResumeTorrent,
   StopTorrent,
+  UpdateSettings,
 } from "../../bindings/github.com/nikitrajkovski/torrentgo/internal/services/torrentservice";
 
 export const torrentService = {
@@ -30,9 +32,15 @@ export const torrentService = {
   resume: ResumeTorrent,
   resumeAll: ResumeAll,
   stop: StopTorrent,
+  updateSettings: UpdateSettings,
   subscribe(onSnapshot: (snapshot: TorrentSnapshot) => void): () => void {
     return Events.On(TorrentgoTorrents, (event) => {
       onSnapshot(event.data);
+    });
+  },
+  subscribeImports(onResult: (result: TorrentImportResult) => void): () => void {
+    return Events.On(TorrentgoTorrentImport, (event) => {
+      onResult(event.data);
     });
   },
 };
@@ -42,5 +50,5 @@ export function emptySnapshot(): TorrentSnapshot {
 }
 
 export function emptySettings(): Settings {
-  return new Settings({ downloadDirectory: "" });
+  return new Settings({ downloadDirectory: "", theme: "dark" });
 }

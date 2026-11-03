@@ -44,7 +44,15 @@ type TorrentSnapshot struct {
 	NetworkReady bool          `json:"networkReady"`
 }
 
+// TorrentImportResult reports the outcome of a native file-drop import without
+// exposing the user's local path to the frontend or logs.
+type TorrentImportResult struct {
+	Added int    `json:"added"`
+	Error string `json:"error,omitempty"`
+}
+
 // Settings contains the currently supported local application preferences.
 type Settings struct {
 	DownloadDirectory string `json:"downloadDirectory"`
+	Theme             string `json:"theme"`
 }

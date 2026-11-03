@@ -3,6 +3,7 @@
 
 export {
     Settings,
+    TorrentImportResult,
     TorrentInfo,
     TorrentSnapshot,
     TorrentStatus

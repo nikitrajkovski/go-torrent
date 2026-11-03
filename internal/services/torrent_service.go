@@ -13,10 +13,14 @@ import (
 	"github.com/nikitrajkovski/torrentgo/internal/torrent"
 )
 
-const snapshotEvent = "torrentgo:torrents"
+const (
+	snapshotEvent      = "torrentgo:torrents"
+	TorrentImportEvent = "torrentgo:torrent-import"
+)
 
 func init() {
 	application.RegisterEvent[models.TorrentSnapshot](snapshotEvent)
+	application.RegisterEvent[models.TorrentImportResult](TorrentImportEvent)
 }
 
 // TorrentService is the narrow Wails-facing API. It intentionally exposes
@@ -108,8 +112,15 @@ func (s *TorrentService) AddTorrentFile() error {
 	if path == "" {
 		return nil
 	}
+	return s.AddTorrentPath(path)
+}
+
+// AddTorrentPath is used by the native window file-drop handler. The engine
+// performs the same extension, size, metainfo, and destination checks as the
+// file-picker route.
+func (s *TorrentService) AddTorrentPath(path string) error {
 	settings := s.GetSettings()
-	_, err = s.engine.AddTorrentFile(path, settings.DownloadDirectory)
+	_, err := s.engine.AddTorrentFile(path, settings.DownloadDirectory)
 	return err
 }
 

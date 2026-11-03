@@ -12,6 +12,7 @@ import type * as models$0 from "../../../../nikitrajkovski/torrentgo/internal/mo
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "torrentgo:torrent-import": models$0.TorrentImportResult;
             "torrentgo:torrents": models$0.TorrentSnapshot;
         }
     }

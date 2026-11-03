@@ -7,8 +7,10 @@ import (
 	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/nikitrajkovski/torrentgo/internal/config"
+	"github.com/nikitrajkovski/torrentgo/internal/models"
 	"github.com/nikitrajkovski/torrentgo/internal/services"
 	"github.com/nikitrajkovski/torrentgo/internal/storage"
 	"github.com/nikitrajkovski/torrentgo/internal/torrent"
@@ -53,12 +55,30 @@ func main() {
 	})
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:      "main",
-		Title:     "TorrentGo",
-		Width:     1200,
-		Height:    760,
-		MinWidth:  920,
-		MinHeight: 600,
+		Name:           "main",
+		Title:          "TorrentGo",
+		Width:          1200,
+		Height:         760,
+		MinWidth:       920,
+		MinHeight:      600,
+		EnableFileDrop: true,
+	})
+	window.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		if event.Context().DropTargetDetails().ElementID != "torrent-drop-zone" {
+			return
+		}
+		result := models.TorrentImportResult{}
+		for _, path := range event.Context().DroppedFiles() {
+			if err := service.AddTorrentPath(path); err != nil {
+				result.Error = "One or more dropped files could not be added. Only valid .torrent files are accepted."
+				continue
+			}
+			result.Added++
+		}
+		if result.Added == 0 && result.Error == "" {
+			result.Error = "No .torrent files were dropped."
+		}
+		app.Event.Emit(services.TorrentImportEvent, result)
 	})
 	window.Center()
 	window.Show()

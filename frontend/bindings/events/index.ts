@@ -9,6 +9,11 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
+ * Name of the custom event "torrentgo:torrent-import".
+ */
+export const TorrentgoTorrentImport = "torrentgo:torrent-import";
+
+/**
  * Name of the custom event "torrentgo:torrents".
  */
 export const TorrentgoTorrents = "torrentgo:torrents";
