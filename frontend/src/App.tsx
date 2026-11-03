@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { Download, FolderOpen, Link, Plus, Radio, ShieldCheck, Upload } from "lucide-react";
+import {
+  Download,
+  FolderOpen,
+  Link,
+  Pause,
+  Play,
+  Plus,
+  Radio,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
 import { TorrentTable } from "./components/TorrentTable";
 import { useTorrents } from "./hooks/useTorrents";
 import { torrentService } from "./services/torrent-service";
@@ -91,6 +101,10 @@ function App() {
             </div>
             <button className="rounded-lg border border-slate-700 px-3.5 text-sm font-medium text-slate-200 transition hover:border-sky-400/70 hover:text-sky-300 disabled:text-slate-600" disabled={submitting} type="submit">Add magnet</button>
           </form>
+          <div className="flex shrink-0 gap-2">
+            <button aria-label="Resume all torrents" className="icon-button border border-slate-800" disabled={submitting || snapshot.torrents.length === 0} onClick={() => void run(() => torrentService.resumeAll())} title="Resume all" type="button"><Play size={16} /></button>
+            <button aria-label="Pause all torrents" className="icon-button border border-slate-800" disabled={submitting || snapshot.torrents.length === 0} onClick={() => void run(() => torrentService.pauseAll())} title="Pause all" type="button"><Pause size={16} /></button>
+          </div>
         </section>
 
         <section className="mb-5 flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/45 p-3.5 sm:flex-row sm:items-center sm:justify-between">
@@ -114,7 +128,7 @@ function App() {
             </div>
             <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs text-slate-400">{snapshot.active} active</span>
           </div>
-          <TorrentTable busyID={busyID} onPause={(torrent) => void run(() => torrentService.pause(torrent.id), torrent.id)} onRemove={(torrent) => void removeTorrent(torrent)} onResume={(torrent) => void run(() => torrentService.resume(torrent.id), torrent.id)} torrents={snapshot.torrents} />
+          <TorrentTable busyID={busyID} onPause={(torrent) => void run(() => torrentService.pause(torrent.id), torrent.id)} onRemove={(torrent) => void removeTorrent(torrent)} onResume={(torrent) => void run(() => torrentService.resume(torrent.id), torrent.id)} onStop={(torrent) => void run(() => torrentService.stop(torrent.id), torrent.id)} torrents={snapshot.torrents} />
         </section>
 
         <footer className="mt-5 flex flex-col gap-3 border-t border-slate-800 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">

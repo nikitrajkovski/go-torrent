@@ -33,6 +33,7 @@ type managedTorrent struct {
 	torrent       *libtorrent.Torrent
 	record        storage.TorrentRecord
 	paused        bool
+	stopped       bool
 	lastDownload  int64
 	lastUpload    int64
 	lastUpdatedAt time.Time
@@ -59,6 +60,7 @@ func New(store *storage.Store, logger *slog.Logger) (*Engine, error) {
 
 	clientConfig := libtorrent.NewDefaultClientConfig()
 	clientConfig.DataDir = filepath.Dir(store.Path())
+	clientConfig.ListenPort = 0
 	clientConfig.Seed = true
 	clientConfig.NoDefaultPortForwarding = true
 	clientConfig.Slogger = logger
@@ -154,12 +156,15 @@ func (e *Engine) Pause(id string) error {
 	if err != nil {
 		return err
 	}
+	if err := e.store.UpdateState(id, true, false); err != nil {
+		return fmt.Errorf("persist paused torrent: %w", err)
+	}
 	entry.torrent.DisallowDataDownload()
 	entry.torrent.DisallowDataUpload()
 	entry.paused = true
-	if err := e.store.UpdatePaused(id, true); err != nil {
-		return fmt.Errorf("persist paused torrent: %w", err)
-	}
+	entry.stopped = false
+	entry.record.Paused = true
+	entry.record.Stopped = false
 	return nil
 }
 
@@ -170,13 +175,83 @@ func (e *Engine) Resume(id string) error {
 	if err != nil {
 		return err
 	}
+	if err := e.store.UpdateState(id, false, false); err != nil {
+		return fmt.Errorf("persist resumed torrent: %w", err)
+	}
 	entry.torrent.AllowDataDownload()
 	entry.torrent.AllowDataUpload()
 	entry.paused = false
-	if err := e.store.UpdatePaused(id, false); err != nil {
-		return fmt.Errorf("persist resumed torrent: %w", err)
-	}
+	entry.stopped = false
+	entry.record.Paused = false
+	entry.record.Stopped = false
 	go downloadAllWhenReady(entry.torrent)
+	return nil
+}
+
+// Stop prevents a completed torrent from seeding while retaining its files,
+// metadata, and place in the queue. Resume starts seeding again.
+func (e *Engine) Stop(id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	entry, err := e.entryLocked(id)
+	if err != nil {
+		return err
+	}
+	if err := e.store.UpdateState(id, false, true); err != nil {
+		return fmt.Errorf("persist stopped torrent: %w", err)
+	}
+	entry.torrent.DisallowDataDownload()
+	entry.torrent.DisallowDataUpload()
+	entry.paused = false
+	entry.stopped = true
+	entry.record.Paused = false
+	entry.record.Stopped = true
+	return nil
+}
+
+// PauseAll stops payload transfer for every active torrent and persists the
+// complete state transition before changing the live client state.
+func (e *Engine) PauseAll() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed {
+		return errors.New("torrent engine is closed")
+	}
+	if err := e.store.SetAllPaused(true); err != nil {
+		return fmt.Errorf("persist paused torrents: %w", err)
+	}
+	for _, entry := range e.entries {
+		entry.torrent.DisallowDataDownload()
+		entry.torrent.DisallowDataUpload()
+		entry.paused = true
+		entry.stopped = false
+		entry.record.Paused = true
+		entry.record.Stopped = false
+	}
+	return nil
+}
+
+// ResumeAll restores payload transfer for every persisted torrent. Metadata
+// downloads continue through the same client and pieces are only requested
+// after the library reports that metainfo is available.
+func (e *Engine) ResumeAll() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed {
+		return errors.New("torrent engine is closed")
+	}
+	if err := e.store.SetAllPaused(false); err != nil {
+		return fmt.Errorf("persist resumed torrents: %w", err)
+	}
+	for _, entry := range e.entries {
+		entry.torrent.AllowDataDownload()
+		entry.torrent.AllowDataUpload()
+		entry.paused = false
+		entry.stopped = false
+		entry.record.Paused = false
+		entry.record.Stopped = false
+		go downloadAllWhenReady(entry.torrent)
+	}
 	return nil
 }
 
@@ -212,7 +287,7 @@ func (e *Engine) Snapshot() models.TorrentSnapshot {
 		snapshot.Torrents = append(snapshot.Torrents, info)
 		snapshot.DownloadRate += info.DownloadRate
 		snapshot.UploadRate += info.UploadRate
-		if info.Status == models.TorrentStatusDownloading || info.Status == models.TorrentStatusMetadata {
+		if info.Status == models.TorrentStatusDownloading || info.Status == models.TorrentStatusMetadata || info.Status == models.TorrentStatusQueued {
 			snapshot.Active++
 		}
 	}
@@ -264,8 +339,8 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 		return models.TorrentInfo{}, errors.New("torrent has no supported info hash")
 	}
 	spec.Storage = libstorage.NewFile(record.DownloadDirectory)
-	spec.DisallowDataDownload = record.Paused
-	spec.DisallowDataUpload = record.Paused
+	spec.DisallowDataDownload = record.Paused || record.Stopped
+	spec.DisallowDataUpload = record.Paused || record.Stopped
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -282,7 +357,7 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 	if !added {
 		return models.TorrentInfo{}, errors.New("this torrent has already been added")
 	}
-	entry := &managedTorrent{torrent: torrent, record: record, paused: record.Paused}
+	entry := &managedTorrent{torrent: torrent, record: record, paused: record.Paused, stopped: record.Stopped}
 	e.entries[record.ID] = entry
 	if !restoring {
 		if err := e.store.Upsert(record); err != nil {
@@ -291,7 +366,7 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 			return models.TorrentInfo{}, fmt.Errorf("persist torrent: %w", err)
 		}
 	}
-	if !entry.paused {
+	if !entry.paused && !entry.stopped {
 		go downloadAllWhenReady(torrent)
 	}
 	return snapshotEntry(entry, time.Now()), nil
@@ -328,8 +403,6 @@ func snapshotEntry(entry *managedTorrent, now time.Time) models.TorrentInfo {
 		ID:                entry.record.ID,
 		Name:              name,
 		DownloadDirectory: entry.record.DownloadDirectory,
-		Downloaded:        torrent.BytesCompleted(),
-		Remaining:         torrent.BytesMissing(),
 		DownloadRate:      downloadRate,
 		UploadRate:        uploadRate,
 		Peers:             stats.ActivePeers,
@@ -338,12 +411,17 @@ func snapshotEntry(entry *managedTorrent, now time.Time) models.TorrentInfo {
 	}
 	if torrent.Info() != nil {
 		info.Size = torrent.Length()
+		info.Downloaded = torrent.BytesCompleted()
+		info.Uploaded = uploadedOnWire
+		info.Remaining = torrent.BytesMissing()
 	}
 	if info.Size > 0 {
 		info.Progress = math.Min(100, (float64(info.Downloaded)/float64(info.Size))*100)
 	}
 
 	switch {
+	case entry.stopped:
+		info.Status = models.TorrentStatusStopped
 	case entry.paused:
 		info.Status = models.TorrentStatusPaused
 	case torrent.Info() == nil:
@@ -353,7 +431,7 @@ func snapshotEntry(entry *managedTorrent, now time.Time) models.TorrentInfo {
 	case downloadRate > 0:
 		info.Status = models.TorrentStatusDownloading
 	default:
-		info.Status = models.TorrentStatusDownloading
+		info.Status = models.TorrentStatusQueued
 	}
 	if info.Status == models.TorrentStatusDownloading && downloadRate > 0 && info.Remaining > 0 {
 		info.ETASeconds = int64(math.Ceil(float64(info.Remaining) / float64(downloadRate)))

@@ -10,9 +10,12 @@ import {
   ChooseDownloadDirectory,
   GetSettings,
   GetTorrents,
+  PauseAll,
   PauseTorrent,
   RemoveTorrent,
+  ResumeAll,
   ResumeTorrent,
+  StopTorrent,
 } from "../../bindings/github.com/nikitrajkovski/torrentgo/internal/services/torrentservice";
 
 export const torrentService = {
@@ -22,8 +25,11 @@ export const torrentService = {
   getSettings: GetSettings,
   getTorrents: GetTorrents,
   pause: PauseTorrent,
+  pauseAll: PauseAll,
   remove: (id: string) => RemoveTorrent(id, false),
   resume: ResumeTorrent,
+  resumeAll: ResumeAll,
+  stop: StopTorrent,
   subscribe(onSnapshot: (snapshot: TorrentSnapshot) => void): () => void {
     return Events.On(TorrentgoTorrents, (event) => {
       onSnapshot(event.data);

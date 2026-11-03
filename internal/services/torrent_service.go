@@ -121,6 +121,18 @@ func (s *TorrentService) ResumeTorrent(id string) error {
 	return s.engine.Resume(id)
 }
 
+func (s *TorrentService) StopTorrent(id string) error {
+	return s.engine.Stop(id)
+}
+
+func (s *TorrentService) PauseAll() error {
+	return s.engine.PauseAll()
+}
+
+func (s *TorrentService) ResumeAll() error {
+	return s.engine.ResumeAll()
+}
+
 func (s *TorrentService) RemoveTorrent(id string, deleteFiles bool) error {
 	if deleteFiles {
 		return fmt.Errorf("removing downloaded files is not available in Phase 1")

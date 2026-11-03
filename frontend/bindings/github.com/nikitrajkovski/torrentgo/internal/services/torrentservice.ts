@@ -51,6 +51,10 @@ export function GetTorrents(): $CancellablePromise<models$0.TorrentSnapshot> {
     });
 }
 
+export function PauseAll(): $CancellablePromise<void> {
+    return $Call.ByID(1705027079);
+}
+
 export function PauseTorrent(id: string): $CancellablePromise<void> {
     return $Call.ByID(1161938570, id);
 }
@@ -59,8 +63,16 @@ export function RemoveTorrent(id: string, deleteFiles: boolean): $CancellablePro
     return $Call.ByID(500722128, id, deleteFiles);
 }
 
+export function ResumeAll(): $CancellablePromise<void> {
+    return $Call.ByID(3867118916);
+}
+
 export function ResumeTorrent(id: string): $CancellablePromise<void> {
     return $Call.ByID(264624773, id);
+}
+
+export function StopTorrent(id: string): $CancellablePromise<void> {
+    return $Call.ByID(706250084, id);
 }
 
 export function UpdateSettings(settings: models$0.Settings): $CancellablePromise<models$0.Settings> {

@@ -1,4 +1,4 @@
-import { Pause, Play, Trash2, Users } from "lucide-react";
+import { Pause, Play, Square, Trash2, Users } from "lucide-react";
 import { ProgressBar } from "./ProgressBar";
 import type { TorrentInfo } from "../types/torrent";
 
@@ -8,6 +8,7 @@ type TorrentTableProps = {
   onPause: (torrent: TorrentInfo) => void;
   onRemove: (torrent: TorrentInfo) => void;
   onResume: (torrent: TorrentInfo) => void;
+  onStop: (torrent: TorrentInfo) => void;
 };
 
 function formatBytes(value: number): string {
@@ -37,7 +38,9 @@ function formatETA(seconds: number): string {
 function statusClass(status: string): string {
   if (status === "Seeding") return "bg-emerald-400/10 text-emerald-300";
   if (status === "Paused") return "bg-amber-400/10 text-amber-300";
+  if (status === "Stopped") return "bg-slate-700/60 text-slate-300";
   if (status === "Fetching metadata") return "bg-violet-400/10 text-violet-300";
+  if (status === "Waiting for peers") return "bg-slate-700/60 text-slate-300";
   return "bg-sky-400/10 text-sky-300";
 }
 
@@ -47,6 +50,7 @@ export function TorrentTable({
   onPause,
   onRemove,
   onResume,
+  onStop,
 }: TorrentTableProps) {
   if (torrents.length === 0) {
     return (
@@ -115,7 +119,7 @@ export function TorrentTable({
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
                     {formatBytes(torrent.downloaded)} of{" "}
-                    {formatBytes(torrent.size)}
+                    {formatBytes(torrent.size)} · sent {formatBytes(torrent.uploaded)}
                   </p>
                 </td>
                 <td className="px-4 py-4">
@@ -141,7 +145,18 @@ export function TorrentTable({
                 </td>
                 <td className="px-4 py-4">
                   <div className="flex items-center justify-end gap-1">
-                    {torrent.paused ? (
+                    {torrent.status === "Seeding" ? (
+                      <button
+                        aria-label={`Stop seeding ${torrent.name}`}
+                        className="icon-button text-amber-300 hover:text-amber-200"
+                        disabled={busy}
+                        onClick={() => onStop(torrent)}
+                        title="Stop seeding"
+                        type="button"
+                      >
+                        <Square fill="currentColor" size={15} />
+                      </button>
+                    ) : torrent.paused || torrent.status === "Stopped" ? (
                       <button
                         aria-label={`Resume ${torrent.name}`}
                         className="icon-button"

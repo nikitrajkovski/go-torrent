@@ -39,6 +39,7 @@ export class TorrentInfo {
     "downloadDirectory": string;
     "size": number;
     "downloaded": number;
+    "uploaded": number;
     "remaining": number;
     "progress": number;
     "status": TorrentStatus;
@@ -66,6 +67,9 @@ export class TorrentInfo {
         }
         if (!("downloaded" in $$source)) {
             this["downloaded"] = 0;
+        }
+        if (!("uploaded" in $$source)) {
+            this["uploaded"] = 0;
         }
         if (!("remaining" in $$source)) {
             this["remaining"] = 0;
@@ -162,9 +166,11 @@ export enum TorrentStatus {
     $zero = "",
 
     TorrentStatusMetadata = "Fetching metadata",
+    TorrentStatusQueued = "Waiting for peers",
     TorrentStatusDownloading = "Downloading",
     TorrentStatusSeeding = "Seeding",
     TorrentStatusPaused = "Paused",
+    TorrentStatusStopped = "Stopped",
     TorrentStatusError = "Error",
 };
 

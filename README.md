@@ -4,7 +4,7 @@ TorrentGo is a lightweight, local-first BitTorrent desktop client for Windows, L
 
 ## Status
 
-**Phase 1 is implemented.** TorrentGo can add legal `.torrent` files and magnet links, download to a selected local folder, seed completed content, show real transfer progress and rates, and recover its local torrent list after a restart.
+**Phases 1 and 2 are implemented.** TorrentGo can add legal `.torrent` files and magnet links, download to a selected local folder, seed completed content, show real transfer progress and rates, and recover its local torrent list after a restart.
 
 There is no telemetry, advertising, cloud download service, or hidden background process.
 
@@ -25,14 +25,16 @@ TorrentGo/
 └── go.mod
 ```
 
-## Phase 1 features
+## Implemented features
 
 - Add valid magnet links and `.torrent` files through native file dialogs.
 - Choose a local destination folder through a native OS folder picker.
 - Download and seed through `anacrolix/torrent`, using its available DHT, tracker, PEX, uTP, TCP, v1, and v2 support.
 - Use verified file-backed piece storage, including detection of existing completed pieces after restart.
 - Show actual completed bytes, size, progress, download/upload rates, ETA, connected peers, and connected seeders.
-- Pause, resume, and remove a torrent from the application. Remove deliberately preserves downloaded payload files.
+- Pause, resume, and remove individual torrents, or pause/resume the complete queue with the toolbar controls. Completed torrents have a separate Stop seeding control that keeps their files while preventing further uploads. These state changes are persisted atomically so they survive a restart.
+- Distinguish metadata retrieval, waiting for peers, active download, paused, and seeding states without simulated progress. Display bytes uploaded for the current client session alongside actual transfer rates.
+- Remove deliberately preserves downloaded payload files.
 - Persist local settings and torrent source records in the operating system configuration directory. `.torrent` metainfo is kept locally so recovery does not depend on its original path.
 - Push a complete snapshot to the UI once per second instead of polling each torrent independently.
 
@@ -47,10 +49,6 @@ For Linux desktop builds, install the native libraries reported by `wails3 docto
 ## Run in development
 
 ```bash
-cd frontend
-npm install
-npm run build
-cd ..
 wails3 dev
 ```
 
@@ -80,4 +78,4 @@ Malformed `.torrent` inputs are size-limited and parsed in Go before they reach 
 
 - Per-file selection, bandwidth limits, concurrent-download limits, detailed peer/tracker tabs, drag-and-drop, notifications, tray behavior, installers, and light mode are planned later phases.
 - Downloaded files cannot be removed from the UI yet. This prevents accidental deletion from a destination folder shared by multiple torrents.
-- TorrentGo has no anonymity layer or proxy configuration in Phase 1.
+- TorrentGo has no anonymity layer or proxy configuration yet.

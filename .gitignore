@@ -1,6 +1,7 @@
 # Go
 /bin/
 /build/bin/
+.task/
 *.exe
 *.test
 *.out

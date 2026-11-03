@@ -22,6 +22,7 @@ type TorrentRecord struct {
 	SourceType        string    `json:"sourceType"`
 	DownloadDirectory string    `json:"downloadDirectory"`
 	Paused            bool      `json:"paused"`
+	Stopped           bool      `json:"stopped"`
 	AddedAt           time.Time `json:"addedAt"`
 }
 
@@ -71,6 +72,12 @@ func (s *Store) Upsert(record TorrentRecord) error {
 }
 
 func (s *Store) UpdatePaused(id string, paused bool) error {
+	return s.UpdateState(id, paused, false)
+}
+
+// UpdateState persists whether a torrent is temporarily paused or explicitly
+// stopped. Stopped torrents remain in the list and can be resumed later.
+func (s *Store) UpdateState(id string, paused, stopped bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	records, err := s.loadLocked()
@@ -80,10 +87,28 @@ func (s *Store) UpdatePaused(id string, paused bool) error {
 	for index := range records {
 		if records[index].ID == id {
 			records[index].Paused = paused
+			records[index].Stopped = stopped
 			return s.saveLocked(records)
 		}
 	}
 	return fmt.Errorf("torrent %q is not persisted", id)
+}
+
+// SetAllPaused applies one state transition to every persisted torrent using a
+// single atomic file replacement. It keeps global start/pause operations from
+// leaving a partially-written state behind if the application exits mid-write.
+func (s *Store) SetAllPaused(paused bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	records, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	for index := range records {
+		records[index].Paused = paused
+		records[index].Stopped = false
+	}
+	return s.saveLocked(records)
 }
 
 func (s *Store) Delete(id string) error {

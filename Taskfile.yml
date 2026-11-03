@@ -1,0 +1,47 @@
+version: "3"
+
+vars:
+  APP_NAME: TorrentGo
+  BIN_DIR: bin
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+
+tasks:
+  install:frontend:deps:
+    summary: Install frontend dependencies
+    dir: frontend
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/**/*
+    cmds:
+      - npm install
+
+  dev:frontend:
+    summary: Run the Vite development server
+    dir: frontend
+    deps:
+      - task: install:frontend:deps
+    cmds:
+      - npm run dev -- --port {{.VITE_PORT}} --strictPort
+
+  build:frontend:
+    summary: Build the embedded frontend assets
+    dir: frontend
+    deps:
+      - task: install:frontend:deps
+    cmds:
+      - npm run build
+
+  build:
+    summary: Build TorrentGo for the current platform
+    deps:
+      - task: build:frontend
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build -o {{.BIN_DIR}}/{{.APP_NAME}} .
+
+  run:
+    summary: Run the current-platform TorrentGo binary
+    cmds:
+      - ./{{.BIN_DIR}}/{{.APP_NAME}}

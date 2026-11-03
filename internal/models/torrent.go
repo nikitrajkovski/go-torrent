@@ -5,9 +5,11 @@ type TorrentStatus string
 
 const (
 	TorrentStatusMetadata    TorrentStatus = "Fetching metadata"
+	TorrentStatusQueued      TorrentStatus = "Waiting for peers"
 	TorrentStatusDownloading TorrentStatus = "Downloading"
 	TorrentStatusSeeding     TorrentStatus = "Seeding"
 	TorrentStatusPaused      TorrentStatus = "Paused"
+	TorrentStatusStopped     TorrentStatus = "Stopped"
 	TorrentStatusError       TorrentStatus = "Error"
 )
 
@@ -19,6 +21,7 @@ type TorrentInfo struct {
 	DownloadDirectory string        `json:"downloadDirectory"`
 	Size              int64         `json:"size"`
 	Downloaded        int64         `json:"downloaded"`
+	Uploaded          int64         `json:"uploaded"`
 	Remaining         int64         `json:"remaining"`
 	Progress          float64       `json:"progress"`
 	Status            TorrentStatus `json:"status"`
