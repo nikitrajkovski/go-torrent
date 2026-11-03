@@ -1,0 +1,15 @@
+{
+  "fixed": {
+    "file_version": "0.1.0"
+  },
+  "info": {
+    "0409": {
+      "ProductVersion": "0.1.0",
+      "CompanyName": "Torrade Contributors",
+      "FileDescription": "A lightweight BitTorrent desktop client",
+      "LegalCopyright": "Copyright (c) 2026 Torrade Contributors",
+      "ProductName": "Torrade",
+      "Comments": "Local-first BitTorrent desktop client"
+    }
+  }
+}

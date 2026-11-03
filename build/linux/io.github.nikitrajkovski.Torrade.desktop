@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Torrade
+Exec=torrade %U
+Icon=io.github.nikitrajkovski.Torrade
+Categories=Network;FileTransfer;
+MimeType=application/x-bittorrent;x-scheme-handler/magnet;
+Terminal=false
+Keywords=BitTorrent;Torrent;Download;
+Version=1.0
+StartupNotify=false
+StartupWMClass=io.github.nikitrajkovski.Torrade

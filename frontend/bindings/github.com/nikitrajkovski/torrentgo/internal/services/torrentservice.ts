@@ -25,8 +25,10 @@ export function AddMagnet(magnet: string): $CancellablePromise<models$0.TorrentI
  * AddTorrentFile presents a native .torrent picker. No torrent is added when
  * the picker is cancelled.
  */
-export function AddTorrentFile(): $CancellablePromise<void> {
-    return $Call.ByID(3587720135);
+export function AddTorrentFile(): $CancellablePromise<models$0.TorrentInfo> {
+    return $Call.ByID(3587720135).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -34,8 +36,10 @@ export function AddTorrentFile(): $CancellablePromise<void> {
  * performs the same extension, size, metainfo, and destination checks as the
  * file-picker route.
  */
-export function AddTorrentPath(path: string): $CancellablePromise<void> {
-    return $Call.ByID(650761242, path);
+export function AddTorrentPath(path: string): $CancellablePromise<models$0.TorrentInfo> {
+    return $Call.ByID(650761242, path).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -66,6 +70,15 @@ export function GetTorrents(): $CancellablePromise<models$0.TorrentSnapshot> {
     });
 }
 
+/**
+ * OpenDownloadDirectory opens the torrent's configured destination in the
+ * native file manager. It never opens a payload file, so a completed transfer
+ * cannot trigger the operating system's file handler by accident.
+ */
+export function OpenDownloadDirectory(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1586471233, id);
+}
+
 export function PauseAll(): $CancellablePromise<void> {
     return $Call.ByID(1705027079);
 }
@@ -88,6 +101,10 @@ export function ResumeTorrent(id: string): $CancellablePromise<void> {
 
 export function SetFileSelected(id: string, index: number, selected: boolean): $CancellablePromise<void> {
     return $Call.ByID(1565206149, id, index, selected);
+}
+
+export function StartPreparedTorrent(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3025726851, id);
 }
 
 export function StopTorrent(id: string): $CancellablePromise<void> {

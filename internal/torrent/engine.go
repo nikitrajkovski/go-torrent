@@ -34,14 +34,15 @@ const (
 )
 
 type managedTorrent struct {
-	torrent        *libtorrent.Torrent
-	record         storage.TorrentRecord
-	paused         bool
-	stopped        bool
-	activeTransfer bool
-	lastDownload   int64
-	lastUpload     int64
-	lastUpdatedAt  time.Time
+	torrent           *libtorrent.Torrent
+	record            storage.TorrentRecord
+	paused            bool
+	stopped           bool
+	awaitingSelection bool
+	activeTransfer    bool
+	lastDownload      int64
+	lastUpload        int64
+	lastUpdatedAt     time.Time
 }
 
 // Engine is the local BitTorrent boundary. It has no dependency on Wails or
@@ -106,6 +107,16 @@ func New(store *storage.Store, logger *slog.Logger, initialSettings ...models.Se
 // AddMagnet validates and adds a magnet URI. The URI stays local and is not
 // logged because it can reveal tracker or content information.
 func (e *Engine) AddMagnet(magnet, downloadDirectory string) (models.TorrentInfo, error) {
+	return e.addMagnet(magnet, downloadDirectory, false)
+}
+
+// PrepareMagnet retrieves only metainfo. Payload transfer waits for an
+// explicit StartPrepared call after the user has reviewed its files.
+func (e *Engine) PrepareMagnet(magnet, downloadDirectory string) (models.TorrentInfo, error) {
+	return e.addMagnet(magnet, downloadDirectory, true)
+}
+
+func (e *Engine) addMagnet(magnet, downloadDirectory string, awaitingSelection bool) (models.TorrentInfo, error) {
 	magnet = strings.TrimSpace(magnet)
 	if magnet == "" {
 		return models.TorrentInfo{}, errors.New("magnet link is required")
@@ -121,6 +132,7 @@ func (e *Engine) AddMagnet(magnet, downloadDirectory string) (models.TorrentInfo
 		SourceType:        sourceTypeMagnet,
 		DownloadDirectory: downloadDirectory,
 		Trackers:          cloneTrackerTiers(spec.Trackers),
+		AwaitingSelection: awaitingSelection,
 		AddedAt:           time.Now().UTC(),
 	}
 	return e.addSpec(spec, record, false)
@@ -130,6 +142,14 @@ func (e *Engine) AddMagnet(magnet, downloadDirectory string) (models.TorrentInfo
 // encoded local copy for restart recovery. It never follows or executes data
 // referenced by the metainfo file.
 func (e *Engine) AddTorrentFile(path, downloadDirectory string) (models.TorrentInfo, error) {
+	return e.addTorrentFile(path, downloadDirectory, false)
+}
+
+func (e *Engine) PrepareTorrentFile(path, downloadDirectory string) (models.TorrentInfo, error) {
+	return e.addTorrentFile(path, downloadDirectory, true)
+}
+
+func (e *Engine) addTorrentFile(path, downloadDirectory string, awaitingSelection bool) (models.TorrentInfo, error) {
 	if strings.ToLower(filepath.Ext(path)) != ".torrent" {
 		return models.TorrentInfo{}, errors.New("selected file must have a .torrent extension")
 	}
@@ -167,6 +187,7 @@ func (e *Engine) AddTorrentFile(path, downloadDirectory string) (models.TorrentI
 		SourceType:        sourceTypeTorrentFile,
 		DownloadDirectory: downloadDirectory,
 		Trackers:          cloneTrackerTiers(spec.Trackers),
+		AwaitingSelection: awaitingSelection,
 		AddedAt:           time.Now().UTC(),
 	}
 	return e.addSpec(spec, record, false)
@@ -291,7 +312,7 @@ func (e *Engine) ResumeAll() error {
 	return nil
 }
 
-// Remove drops the torrent from the engine and its persistent index. TorrentGo
+// Remove drops the torrent from the engine and its persistent index. Torrade
 // intentionally does not delete payload files in Phase 1: a shared destination
 // can contain files from more than one torrent, so blind removal is unsafe.
 func (e *Engine) Remove(id string) error {
@@ -319,6 +340,11 @@ func (e *Engine) Details(id string) (models.TorrentDetails, error) {
 		return models.TorrentDetails{}, err
 	}
 	details := models.TorrentDetails{Info: snapshotEntry(entry, time.Now())}
+	for tier, urls := range entry.record.Trackers {
+		for _, trackerURL := range urls {
+			details.Trackers = append(details.Trackers, models.TorrentTracker{URL: trackerURL, Tier: tier + 1})
+		}
+	}
 	if entry.torrent.Info() == nil {
 		details.MetadataPending = true
 		return details, nil
@@ -333,11 +359,6 @@ func (e *Engine) Details(id string) (models.TorrentDetails, error) {
 			Downloaded: file.BytesCompleted(),
 			Selected:   isFileSelected(entry.record.SelectedFiles, index),
 		})
-	}
-	for tier, urls := range entry.record.Trackers {
-		for _, trackerURL := range urls {
-			details.Trackers = append(details.Trackers, models.TorrentTracker{URL: trackerURL, Tier: tier + 1})
-		}
 	}
 	for _, peer := range entry.torrent.PeerConns() {
 		client := "Unknown"
@@ -385,6 +406,11 @@ func (e *Engine) SetFileSelected(id string, index int, selected bool) error {
 		return fmt.Errorf("persist file selection: %w", err)
 	}
 	entry.record.SelectedFiles = selection
+	if entry.awaitingSelection {
+		// The review flow records the choice only. Raising a File priority here
+		// would request payload pieces before the explicit StartPrepared action.
+		return nil
+	}
 	if selected {
 		files[index].Download()
 	} else {
@@ -406,10 +432,16 @@ func (e *Engine) Snapshot() models.TorrentSnapshot {
 	}
 	for _, entry := range e.entries {
 		info := snapshotEntry(entry, now)
+		if entry.torrent.Info() != nil && entry.record.CachedMetainfo == "" {
+			e.persistMetainfoRecoveryDataLocked(entry, info)
+		}
+		if info.Status == models.TorrentStatusCompleted {
+			e.persistCompletedRecoveryDataLocked(entry, info)
+		}
 		snapshot.Torrents = append(snapshot.Torrents, info)
 		snapshot.DownloadRate += info.DownloadRate
 		snapshot.UploadRate += info.UploadRate
-		if info.Status == models.TorrentStatusDownloading || info.Status == models.TorrentStatusMetadata || info.Status == models.TorrentStatusQueued {
+		if entry.activeTransfer {
 			snapshot.Active++
 		}
 	}
@@ -417,6 +449,36 @@ func (e *Engine) Snapshot() models.TorrentSnapshot {
 		return strings.ToLower(snapshot.Torrents[left].Name) < strings.ToLower(snapshot.Torrents[right].Name)
 	})
 	return snapshot
+}
+
+func (e *Engine) persistCompletedRecoveryDataLocked(entry *managedTorrent, info models.TorrentInfo) {
+	if entry.record.KnownName == info.Name && entry.record.KnownSize == info.Size && entry.record.KnownDownloaded == info.Downloaded {
+		return
+	}
+	if err := e.store.UpdateRecoveryData(entry.record.ID, entry.record.CachedMetainfo, info.Name, info.Size, info.Downloaded); err != nil {
+		e.logger.Warn("persist completed torrent recovery data", "id", entry.record.ID, "error", err)
+		return
+	}
+	entry.record.KnownName = info.Name
+	entry.record.KnownSize = info.Size
+	entry.record.KnownDownloaded = info.Downloaded
+}
+
+func (e *Engine) persistMetainfoRecoveryDataLocked(entry *managedTorrent, info models.TorrentInfo) {
+	metaInfoBytes, err := metainfoBytes(entry.torrent.Metainfo())
+	if err != nil {
+		e.logger.Warn("cache torrent metainfo", "id", entry.record.ID, "error", err)
+		return
+	}
+	encodedMetainfo := base64.StdEncoding.EncodeToString(metaInfoBytes)
+	if err := e.store.UpdateRecoveryData(entry.record.ID, encodedMetainfo, info.Name, info.Size, info.Downloaded); err != nil {
+		e.logger.Warn("persist torrent recovery data", "id", entry.record.ID, "error", err)
+		return
+	}
+	entry.record.CachedMetainfo = encodedMetainfo
+	entry.record.KnownName = info.Name
+	entry.record.KnownSize = info.Size
+	entry.record.KnownDownloaded = info.Downloaded
 }
 
 func (e *Engine) Close() error {
@@ -484,7 +546,7 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 	if len(record.Trackers) == 0 {
 		record.Trackers = cloneTrackerTiers(spec.Trackers)
 	}
-	entry := &managedTorrent{torrent: torrent, record: record, paused: record.Paused, stopped: record.Stopped}
+	entry := &managedTorrent{torrent: torrent, record: record, paused: record.Paused, stopped: record.Stopped, awaitingSelection: record.AwaitingSelection}
 	e.entries[record.ID] = entry
 	if !restoring {
 		if err := e.store.Upsert(record); err != nil {
@@ -508,9 +570,45 @@ func (e *Engine) entryLocked(id string) (*managedTorrent, error) {
 	return entry, nil
 }
 
+// StartPrepared permits payload transfer for a torrent that was added through
+// the metadata-first flow. At least one file must remain selected.
+func (e *Engine) StartPrepared(id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	entry, err := e.entryLocked(id)
+	if err != nil {
+		return err
+	}
+	if !entry.awaitingSelection {
+		return errors.New("torrent is not awaiting file selection")
+	}
+	if entry.torrent.Info() == nil {
+		return errors.New("torrent metadata is not available yet")
+	}
+	if !hasSelectedFiles(entry.record.SelectedFiles) {
+		return errors.New("select at least one file before starting the download")
+	}
+	if err := e.store.UpdateAwaitingSelection(id, false); err != nil {
+		return fmt.Errorf("persist file selection confirmation: %w", err)
+	}
+	entry.awaitingSelection = false
+	entry.record.AwaitingSelection = false
+	e.reconcileDownloadsLocked()
+	return nil
+}
+
 func (e *Engine) reconcileDownloadsLocked() {
 	entries := make([]*managedTorrent, 0, len(e.entries))
 	for _, entry := range e.entries {
+		if entry.awaitingSelection {
+			// Metadata exchange and peer discovery need a live data path. No
+			// payload pieces are requested because no file priorities have been
+			// raised until StartPrepared runs.
+			entry.activeTransfer = false
+			entry.torrent.AllowDataDownload()
+			entry.torrent.DisallowDataUpload()
+			continue
+		}
 		if entry.paused || entry.stopped || !hasSelectedFiles(entry.record.SelectedFiles) {
 			entry.activeTransfer = false
 			entry.torrent.DisallowDataDownload()
@@ -588,18 +686,27 @@ func snapshotEntry(entry *managedTorrent, now time.Time) models.TorrentInfo {
 		info.Downloaded = torrent.BytesCompleted()
 		info.Uploaded = uploadedOnWire
 		info.Remaining = torrent.BytesMissing()
+	} else if entry.record.KnownSize > 0 {
+		info.Name = entry.record.KnownName
+		info.Size = entry.record.KnownSize
+		info.Downloaded = entry.record.KnownDownloaded
+		info.Remaining = max(0, info.Size-info.Downloaded)
 	}
 	if info.Size > 0 {
 		info.Progress = math.Min(100, (float64(info.Downloaded)/float64(info.Size))*100)
 	}
 
 	switch {
+	case entry.stopped && info.Size > 0 && info.Downloaded >= info.Size:
+		info.Status = models.TorrentStatusCompleted
 	case entry.stopped:
 		info.Status = models.TorrentStatusStopped
 	case entry.paused:
 		info.Status = models.TorrentStatusPaused
 	case torrent.Info() == nil:
 		info.Status = models.TorrentStatusMetadata
+	case entry.awaitingSelection:
+		info.Status = models.TorrentStatusSelection
 	case torrent.Complete().Bool():
 		info.Status = models.TorrentStatusSeeding
 	case downloadRate > 0:
@@ -611,6 +718,17 @@ func snapshotEntry(entry *managedTorrent, now time.Time) models.TorrentInfo {
 		info.ETASeconds = int64(math.Ceil(float64(info.Remaining) / float64(downloadRate)))
 	}
 	return info
+}
+
+func metainfoBytes(metaInfo metainfo.MetaInfo) ([]byte, error) {
+	var buffer bytes.Buffer
+	if err := metaInfo.Write(&buffer); err != nil {
+		return nil, err
+	}
+	if buffer.Len() > maxTorrentFileSize {
+		return nil, fmt.Errorf("torrent metainfo exceeds %d MiB", maxTorrentFileSize>>20)
+	}
+	return buffer.Bytes(), nil
 }
 
 func rates(entry *managedTorrent, downloaded, uploaded int64, now time.Time) (int64, int64) {
@@ -643,6 +761,17 @@ func torrentID(spec *libtorrent.TorrentSpec) string {
 }
 
 func specFromRecord(record storage.TorrentRecord) (*libtorrent.TorrentSpec, error) {
+	if record.CachedMetainfo != "" {
+		rawMetainfo, err := base64.StdEncoding.DecodeString(record.CachedMetainfo)
+		if err != nil {
+			return nil, fmt.Errorf("decode cached metainfo: %w", err)
+		}
+		metaInfo, err := metainfo.Load(bytes.NewReader(rawMetainfo))
+		if err != nil {
+			return nil, fmt.Errorf("parse cached metainfo: %w", err)
+		}
+		return libtorrent.TorrentSpecFromMetaInfoErr(metaInfo)
+	}
 	switch record.SourceType {
 	case sourceTypeMagnet:
 		return libtorrent.TorrentSpecFromMagnetUri(record.Source)

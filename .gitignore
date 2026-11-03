@@ -1,6 +1,8 @@
 # Go
 /bin/
 /build/bin/
+/build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+/build/windows/nsis/wails_tools.nsh
 .task/
 *.exe
 *.test

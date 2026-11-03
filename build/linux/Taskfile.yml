@@ -1,0 +1,41 @@
+version: "3"
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: Build a Linux executable
+    deps:
+      - task: common:build:frontend
+      - task: common:generate:icons
+    cmds:
+      - go build {{.BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.APP_NAME}} .
+    vars:
+      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production -trimpath -buildvcs=false -ldflags="-s -w"{{else}}-buildvcs=false{{end}}'
+    env:
+      GOOS: linux
+      GOARCH: '{{.ARCH | default ARCH}}'
+      CGO_ENABLED: 1
+      PRODUCTION: '{{.PRODUCTION | default "false"}}'
+
+  package:
+    summary: Create Debian and RPM packages for the current Linux architecture
+    deps:
+      - task: build
+        vars:
+          PRODUCTION: "true"
+    cmds:
+      - task: generate:desktop
+      - wails3 tool package -name {{.APP_NAME}} -format deb -config build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
+      - wails3 tool package -name {{.APP_NAME}} -format rpm -config build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
+
+  generate:desktop:
+    summary: Generate the Linux desktop entry
+    cmds:
+      - wails3 generate .desktop -name "{{.APP_NAME}}" -exec torrade -icon io.github.nikitrajkovski.Torrade -outputfile build/linux/io.github.nikitrajkovski.Torrade.desktop -categories "Network;FileTransfer;"
+
+  run:
+    cmds:
+      - ./{{.BIN_DIR}}/{{.APP_NAME}}
+

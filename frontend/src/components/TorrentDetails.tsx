@@ -4,7 +4,7 @@ import { torrentService } from "../services/torrent-service";
 import type { TorrentDetails as TorrentDetailsModel, TorrentFile, TorrentInfo } from "../types/torrent";
 
 type DetailTab = "overview" | "files" | "peers" | "trackers";
-type TorrentDetailsProps = { torrent: TorrentInfo | undefined; onFileSelected: (index: number, selected: boolean) => Promise<void> };
+type TorrentDetailsProps = { torrent: TorrentInfo | undefined; onFileSelected: (index: number, selected: boolean) => Promise<void>; onStartPrepared: () => Promise<void> };
 
 function formatBytes(value: number): string {
   if (!value) return "—";
@@ -21,11 +21,17 @@ function FileRow({ file, onChange }: { file: TorrentFile; onChange: (selected: b
   return <label className="tg-file-row"><input checked={file.selected} onChange={(event) => onChange(event.target.checked)} type="checkbox" /><FileText size={16} /><span className="tg-file-path" title={file.path}>{file.path}</span><span className="tg-number is-muted">{formatBytes(file.size)}</span><span className="tg-file-progress"><span className="tg-meter"><i style={{ width: `${progress}%` }} /></span><span>{progress.toFixed(0)}%</span></span></label>;
 }
 
-export function TorrentDetails({ torrent, onFileSelected }: TorrentDetailsProps) {
+export function TorrentDetails({ torrent, onFileSelected, onStartPrepared }: TorrentDetailsProps) {
   const [tab, setTab] = useState<DetailTab>("overview");
   const [details, setDetails] = useState<TorrentDetailsModel | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsRevision, setDetailsRevision] = useState(0);
+
+  useEffect(() => {
+    if (torrent?.status === "Awaiting file selection") {
+      setTab("files");
+    }
+  }, [torrent?.id, torrent?.status]);
 
   useEffect(() => {
     let active = true;
@@ -44,8 +50,8 @@ export function TorrentDetails({ torrent, onFileSelected }: TorrentDetailsProps)
   const tabs: Array<[DetailTab, string]> = [["overview", "Overview"], ["files", "Files"], ["peers", "Peers"], ["trackers", "Trackers"]];
   return (
     <section aria-label="Torrent details" className="tg-card tg-details">
-      <div className="tg-details-head"><div className="tg-details-title" title={torrent.name}>{torrent.name}</div><div className="tg-tabs" role="tablist">{tabs.map(([id, label]) => <button aria-selected={tab === id} className={tab === id ? "is-active" : ""} key={id} onClick={() => setTab(id)} role="tab" type="button">{label}</button>)}</div></div>
-      {detailsError ? <div className="tg-details-empty">{detailsError}</div> : details?.metadataPending ? <div className="tg-details-empty">Fetching torrent metadata. File, peer, and tracker details will appear when it is available.</div> : <div className="tg-detail-body">
+      <div className="tg-details-head"><div className="tg-details-title" title={torrent.name}>{torrent.name}</div><div className="tg-details-actions">{info.status === "Awaiting file selection" && <button className="tg-primary tg-start-prepared" onClick={() => void onStartPrepared()} type="button">Start download</button>}<div className="tg-tabs" role="tablist">{tabs.map(([id, label]) => <button aria-selected={tab === id} className={tab === id ? "is-active" : ""} key={id} onClick={() => setTab(id)} role="tab" type="button">{label}</button>)}</div></div></div>
+      {detailsError ? <div className="tg-details-empty">{detailsError}</div> : details?.metadataPending ? <div className="tg-details-empty"><p>Fetching torrent metadata from the swarm.</p><p className="tg-metadata-diagnostics">{info.peers} connected peers · {details.trackers.length} configured trackers</p><p className="tg-metadata-hint">If this remains at zero connected peers, the magnet has no reachable metadata peers or its trackers/DHT cannot reach the swarm.</p></div> : <div className="tg-detail-body">
         {tab === "overview" && <><div className="tg-detail-progress-head"><span>Progress</span><span>{info.progress.toFixed(1)}% complete</span></div><div className={`tg-meter tg-piece-meter ${meterClass}`}><i style={{ width: `${info.progress}%` }} /></div><dl className="tg-facts"><DetailItem label="Save to" value={info.downloadDirectory} /><DetailItem label="Status" value={info.status} /><DetailItem label="Size" value={formatBytes(info.size)} /><DetailItem label="Downloaded" value={formatBytes(info.downloaded)} /><DetailItem label="Uploaded" value={formatBytes(info.uploaded)} /><DetailItem label="Remaining" value={formatBytes(info.remaining)} /><DetailItem label="Download speed" value={formatRate(info.downloadRate)} /><DetailItem label="Upload speed" value={formatRate(info.uploadRate)} /><DetailItem label="ETA" value={formatETA(info.etaSeconds)} /><DetailItem label="Seeds · Peers" value={`${info.seeds} · ${info.peers}`} /></dl></>}
         {tab === "files" && <div className="tg-detail-list">{details?.files.length ? details.files.map((file) => <FileRow file={file} key={file.index} onChange={(selected) => { void onFileSelected(file.index, selected).then(() => setDetailsRevision((revision) => revision + 1)); }} />) : <p className="tg-details-empty">No file metadata is available.</p>}</div>}
         {tab === "peers" && <div className="tg-detail-list">{details?.peers.length ? <><div className="tg-peer-head"><span>Address</span><span>Client</span><span>Down</span><span>Up</span></div>{details.peers.map((peer) => <div className="tg-peer-row" key={`${peer.network}:${peer.address}`}><span className="tg-number">{peer.address}</span><span>{peer.client}</span><span className="tg-number">{formatRate(peer.downloadRate)}</span><span className="tg-number is-muted">{formatRate(peer.uploadRate)}</span></div>)}</> : <p className="tg-details-empty"><Users size={16} /> No connected peers right now.</p>}</div>}

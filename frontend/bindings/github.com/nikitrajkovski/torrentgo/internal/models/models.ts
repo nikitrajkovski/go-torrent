@@ -343,9 +343,11 @@ export enum TorrentStatus {
     $zero = "",
 
     TorrentStatusMetadata = "Fetching metadata",
+    TorrentStatusSelection = "Awaiting file selection",
     TorrentStatusQueued = "Waiting for peers",
     TorrentStatusDownloading = "Downloading",
     TorrentStatusSeeding = "Seeding",
+    TorrentStatusCompleted = "Completed",
     TorrentStatusPaused = "Paused",
     TorrentStatusStopped = "Stopped",
     TorrentStatusError = "Error",

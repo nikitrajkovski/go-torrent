@@ -5,9 +5,11 @@ type TorrentStatus string
 
 const (
 	TorrentStatusMetadata    TorrentStatus = "Fetching metadata"
+	TorrentStatusSelection   TorrentStatus = "Awaiting file selection"
 	TorrentStatusQueued      TorrentStatus = "Waiting for peers"
 	TorrentStatusDownloading TorrentStatus = "Downloading"
 	TorrentStatusSeeding     TorrentStatus = "Seeding"
+	TorrentStatusCompleted   TorrentStatus = "Completed"
 	TorrentStatusPaused      TorrentStatus = "Paused"
 	TorrentStatusStopped     TorrentStatus = "Stopped"
 	TorrentStatusError       TorrentStatus = "Error"

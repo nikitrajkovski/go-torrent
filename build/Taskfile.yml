@@ -1,0 +1,53 @@
+version: "3"
+
+tasks:
+  go:mod:tidy:
+    internal: true
+    cmds:
+      - go mod tidy
+
+  install:frontend:deps:
+    summary: Install locked frontend dependencies
+    dir: frontend
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/**
+    cmds:
+      - npm ci
+
+  generate:bindings:
+    summary: Generate the TypeScript API bindings from the Go services
+    deps:
+      - task: go:mod:tidy
+    cmds:
+      - wails3 generate bindings -clean=true -ts
+
+  build:frontend:
+    summary: Build the embedded React frontend
+    deps:
+      - task: install:frontend:deps
+      - task: generate:bindings
+    dir: frontend
+    cmds:
+      - npm run build
+
+  generate:icons:
+    summary: Generate the native application icons from build/appicon.png
+    sources:
+      - appicon.png
+    generates:
+      - windows/icon.ico
+      - darwin/icon.icns
+    cmds:
+      - wails3 generate icons -input build/appicon.png -windowsfilename build/windows/icon.ico -macfilename build/darwin/icon.icns
+
+  dev:frontend:
+    summary: Run the Vite development server
+    dir: frontend
+    deps:
+      - task: install:frontend:deps
+    cmds:
+      - npm run dev -- --port {{.VITE_PORT}} --strictPort
+

@@ -25,6 +25,11 @@ type TorrentRecord struct {
 	Stopped           bool       `json:"stopped"`
 	SelectedFiles     []bool     `json:"selectedFiles,omitempty"`
 	Trackers          [][]string `json:"trackers,omitempty"`
+	AwaitingSelection bool       `json:"awaitingSelection,omitempty"`
+	CachedMetainfo    string     `json:"cachedMetainfo,omitempty"`
+	KnownName         string     `json:"knownName,omitempty"`
+	KnownSize         int64      `json:"knownSize,omitempty"`
+	KnownDownloaded   int64      `json:"knownDownloaded,omitempty"`
 	AddedAt           time.Time  `json:"addedAt"`
 }
 
@@ -107,6 +112,48 @@ func (s *Store) UpdateSelectedFiles(id string, selected []bool) error {
 	for index := range records {
 		if records[index].ID == id {
 			records[index].SelectedFiles = append([]bool(nil), selected...)
+			return s.saveLocked(records)
+		}
+	}
+	return fmt.Errorf("torrent %q is not persisted", id)
+}
+
+// UpdateAwaitingSelection persists whether payload transfer waits for the user
+// to confirm the metainfo file selection.
+func (s *Store) UpdateAwaitingSelection(id string, awaiting bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	records, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	for index := range records {
+		if records[index].ID == id {
+			records[index].AwaitingSelection = awaiting
+			return s.saveLocked(records)
+		}
+	}
+	return fmt.Errorf("torrent %q is not persisted", id)
+}
+
+// UpdateRecoveryData stores locally acquired metainfo and the last known
+// piece totals. This lets a magnet restore its name, size, and completed
+// state without waiting for the swarm on the next application launch.
+func (s *Store) UpdateRecoveryData(id, cachedMetainfo, name string, size, downloaded int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	records, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	for index := range records {
+		if records[index].ID == id {
+			if cachedMetainfo != "" {
+				records[index].CachedMetainfo = cachedMetainfo
+			}
+			records[index].KnownName = name
+			records[index].KnownSize = size
+			records[index].KnownDownloaded = downloaded
 			return s.saveLocked(records)
 		}
 	}

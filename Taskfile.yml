@@ -1,47 +1,39 @@
 version: "3"
 
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+
 vars:
-  APP_NAME: TorrentGo
+  APP_NAME: Torrade
   BIN_DIR: bin
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
 
 tasks:
-  install:frontend:deps:
-    summary: Install frontend dependencies
-    dir: frontend
-    sources:
-      - package.json
-      - package-lock.json
-    generates:
-      - node_modules/**/*
-    cmds:
-      - npm install
-
-  dev:frontend:
-    summary: Run the Vite development server
-    dir: frontend
-    deps:
-      - task: install:frontend:deps
-    cmds:
-      - npm run dev -- --port {{.VITE_PORT}} --strictPort
-
-  build:frontend:
-    summary: Build the embedded frontend assets
-    dir: frontend
-    deps:
-      - task: install:frontend:deps
-    cmds:
-      - npm run build
-
   build:
-    summary: Build TorrentGo for the current platform
-    deps:
-      - task: build:frontend
+    summary: Build Torrade for this host platform
     cmds:
-      - mkdir -p {{.BIN_DIR}}
-      - go build -o {{.BIN_DIR}}/{{.APP_NAME}} .
+      - task: "{{OS}}:build"
+
+  package:
+    summary: Create the host platform's distributable package
+    cmds:
+      - task: "{{OS}}:package"
 
   run:
-    summary: Run the current-platform TorrentGo binary
+    summary: Run the built application
     cmds:
-      - ./{{.BIN_DIR}}/{{.APP_NAME}}
+      - task: "{{OS}}:run"
+
+  check:
+    summary: Run backend tests and a strict frontend build
+    deps:
+      - task: common:build:frontend
+    cmds:
+      - go test ./...
+
+  test:race:
+    summary: Run the engine and persistence tests under Go's race detector
+    cmds:
+      - go test -race ./internal/config ./internal/platform ./internal/storage ./internal/torrent

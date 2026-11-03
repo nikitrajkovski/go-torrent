@@ -1,0 +1,30 @@
+name: torrade
+arch: ${GOARCH}
+platform: linux
+version: "0.1.0"
+section: net
+priority: optional
+maintainer: Torrade Contributors
+description: Lightweight local-first BitTorrent desktop client
+vendor: Torrade Contributors
+homepage: https://github.com/nikitrajkovski/go-torrent
+license: MIT
+release: "1"
+contents:
+  - src: ./bin/Torrade
+    dst: /usr/bin/torrade
+  - src: ./build/appicon.png
+    dst: /usr/share/icons/hicolor/256x256/apps/io.github.nikitrajkovski.Torrade.png
+  - src: ./build/appicon.png
+    dst: /usr/share/icons/hicolor/512x512/apps/io.github.nikitrajkovski.Torrade.png
+  - src: ./build/linux/io.github.nikitrajkovski.Torrade.desktop
+    dst: /usr/share/applications/io.github.nikitrajkovski.Torrade.desktop
+depends:
+  - libgtk-4-1
+  - libwebkitgtk-6.0-4
+overrides:
+  rpm:
+    depends:
+      - gtk4
+      - webkitgtk6.0
+

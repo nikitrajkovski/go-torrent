@@ -10,6 +10,7 @@ import (
 
 	"github.com/nikitrajkovski/torrentgo/internal/config"
 	"github.com/nikitrajkovski/torrentgo/internal/models"
+	"github.com/nikitrajkovski/torrentgo/internal/platform"
 	"github.com/nikitrajkovski/torrentgo/internal/torrent"
 )
 
@@ -103,22 +104,22 @@ func (s *TorrentService) ChooseDownloadDirectory() (models.Settings, error) {
 
 func (s *TorrentService) AddMagnet(magnet string) (models.TorrentInfo, error) {
 	settings := s.GetSettings()
-	return s.engine.AddMagnet(magnet, settings.DownloadDirectory)
+	return s.engine.PrepareMagnet(magnet, settings.DownloadDirectory)
 }
 
 // AddTorrentFile presents a native .torrent picker. No torrent is added when
 // the picker is cancelled.
-func (s *TorrentService) AddTorrentFile() error {
+func (s *TorrentService) AddTorrentFile() (models.TorrentInfo, error) {
 	path, err := application.Get().Dialog.OpenFile().
 		SetTitle("Add torrent file").
 		AddFilter("Torrent files", "*.torrent").
 		AddFilter("All files", "*.*").
 		PromptForSingleSelection()
 	if err != nil {
-		return fmt.Errorf("open torrent file dialog: %w", err)
+		return models.TorrentInfo{}, fmt.Errorf("open torrent file dialog: %w", err)
 	}
 	if path == "" {
-		return nil
+		return models.TorrentInfo{}, nil
 	}
 	return s.AddTorrentPath(path)
 }
@@ -126,10 +127,9 @@ func (s *TorrentService) AddTorrentFile() error {
 // AddTorrentPath is used by the native window file-drop handler. The engine
 // performs the same extension, size, metainfo, and destination checks as the
 // file-picker route.
-func (s *TorrentService) AddTorrentPath(path string) error {
+func (s *TorrentService) AddTorrentPath(path string) (models.TorrentInfo, error) {
 	settings := s.GetSettings()
-	_, err := s.engine.AddTorrentFile(path, settings.DownloadDirectory)
-	return err
+	return s.engine.PrepareTorrentFile(path, settings.DownloadDirectory)
 }
 
 func (s *TorrentService) PauseTorrent(id string) error {
@@ -150,6 +150,21 @@ func (s *TorrentService) GetTorrentDetails(id string) (models.TorrentDetails, er
 
 func (s *TorrentService) SetFileSelected(id string, index int, selected bool) error {
 	return s.engine.SetFileSelected(id, index, selected)
+}
+
+func (s *TorrentService) StartPreparedTorrent(id string) error {
+	return s.engine.StartPrepared(id)
+}
+
+// OpenDownloadDirectory opens the torrent's configured destination in the
+// native file manager. It never opens a payload file, so a completed transfer
+// cannot trigger the operating system's file handler by accident.
+func (s *TorrentService) OpenDownloadDirectory(id string) error {
+	details, err := s.engine.Details(id)
+	if err != nil {
+		return err
+	}
+	return platform.OpenDirectory(details.Info.DownloadDirectory)
 }
 
 func (s *TorrentService) PauseAll() error {

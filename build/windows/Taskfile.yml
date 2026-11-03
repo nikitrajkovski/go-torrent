@@ -1,0 +1,57 @@
+version: "3"
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: Build a Windows executable
+    deps:
+      - task: common:build:frontend
+      - task: common:generate:icons
+    cmds:
+      - task: generate:syso
+      - go build {{.BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.APP_NAME}}.exe .
+      - cmd: powershell Remove-Item wails_windows_{{.ARCH}}.syso
+        platforms: [windows]
+      - cmd: rm -f wails_windows_{{.ARCH}}.syso
+        platforms: [linux, darwin]
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'
+      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production -trimpath -buildvcs=false -ldflags="-s -w -H windowsgui"{{else}}-buildvcs=false{{end}}'
+    env:
+      GOOS: windows
+      GOARCH: '{{.ARCH | default ARCH}}'
+      CGO_ENABLED: 0
+      PRODUCTION: '{{.PRODUCTION | default "false"}}'
+
+  generate:syso:
+    summary: Generate Windows version metadata and manifest resources
+    cmds:
+      - wails3 generate syso -arch {{.ARCH}} -icon build/windows/icon.ico -manifest build/windows/wails.exe.manifest -info build/windows/info.json -out wails_windows_{{.ARCH}}.syso
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'
+
+  package:
+    summary: Create the NSIS installer (requires makensis)
+    cmds:
+      - task: create:nsis:installer
+
+  create:nsis:installer:
+    summary: Build an NSIS installer with a WebView2 bootstrapper
+    dir: build/windows/nsis
+    deps:
+      - task: build
+        vars:
+          PRODUCTION: "true"
+    cmds:
+      - wails3 generate webview2bootstrapper -dir .
+      - makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'
+      ARG_FLAG: '{{if eq .ARCH "amd64"}}AMD64{{else}}ARM64{{end}}'
+
+  run:
+    cmds:
+      - '{{.BIN_DIR}}\\{{.APP_NAME}}.exe'
+

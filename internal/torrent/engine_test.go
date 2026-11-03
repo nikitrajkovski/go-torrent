@@ -224,6 +224,59 @@ func TestSelectionHelpers(t *testing.T) {
 	}
 }
 
+func TestPrepareMagnetWaitsForSelection(t *testing.T) {
+	store := storage.NewStoreAt(filepath.Join(t.TempDir(), "torrents.json"))
+	engine, err := New(store, nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	prepared, err := engine.PrepareMagnet("magnet:?xt=urn:btih:6123456789abcdef0123456789abcdef01234567", t.TempDir())
+	if err != nil {
+		t.Fatalf("PrepareMagnet() error = %v", err)
+	}
+	engine.mu.Lock()
+	entry := engine.entries[prepared.ID]
+	awaiting := entry.awaitingSelection
+	active := entry.activeTransfer
+	engine.mu.Unlock()
+	if !awaiting || active {
+		t.Fatalf("prepared entry = awaiting:%t active:%t, want awaiting and inactive", awaiting, active)
+	}
+	if err := engine.StartPrepared(prepared.ID); err == nil {
+		t.Fatal("StartPrepared() error = nil before metadata is available")
+	}
+}
+
+func TestStoppedCompletedTorrentUsesPersistedRecoverySummary(t *testing.T) {
+	store := storage.NewStoreAt(filepath.Join(t.TempDir(), "torrents.json"))
+	engine, err := New(store, nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	added, err := engine.AddMagnet("magnet:?xt=urn:btih:7123456789abcdef0123456789abcdef01234567&dn=old-name", t.TempDir())
+	if err != nil {
+		t.Fatalf("AddMagnet() error = %v", err)
+	}
+	engine.mu.Lock()
+	entry := engine.entries[added.ID]
+	entry.stopped = true
+	entry.record.Stopped = true
+	entry.record.KnownName = "completed.iso"
+	entry.record.KnownSize = 2048
+	entry.record.KnownDownloaded = 2048
+	engine.mu.Unlock()
+	snapshot := engine.Snapshot()
+	if len(snapshot.Torrents) != 1 {
+		t.Fatalf("Snapshot() count = %d, want 1", len(snapshot.Torrents))
+	}
+	got := snapshot.Torrents[0]
+	if got.Status != models.TorrentStatusCompleted || got.Name != "completed.iso" || got.Progress != 100 {
+		t.Fatalf("Snapshot() = %#v, want completed persisted summary", got)
+	}
+}
+
 func assertAllPaused(t *testing.T, snapshot models.TorrentSnapshot, paused bool) {
 	t.Helper()
 	if len(snapshot.Torrents) != 2 {
