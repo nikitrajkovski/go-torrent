@@ -35,6 +35,7 @@ const (
 
 type managedTorrent struct {
 	torrent           *libtorrent.Torrent
+	storage           libstorage.ClientImplCloser
 	record            storage.TorrentRecord
 	paused            bool
 	stopped           bool
@@ -327,6 +328,9 @@ func (e *Engine) Remove(id string) error {
 	}
 	entry.torrent.Drop()
 	delete(e.entries, id)
+	if err := entry.storage.Close(); err != nil {
+		return fmt.Errorf("close torrent storage: %w", err)
+	}
 	return nil
 }
 
@@ -489,10 +493,20 @@ func (e *Engine) Close() error {
 	}
 	e.closed = true
 	client := e.client
+	storages := make([]libstorage.ClientImplCloser, 0, len(e.entries))
+	for _, entry := range e.entries {
+		storages = append(storages, entry.storage)
+	}
 	e.mu.Unlock()
 
-	if closeErrors := client.Close(); len(closeErrors) > 0 {
-		return fmt.Errorf("close torrent client: %w", errors.Join(closeErrors...))
+	closeErrors := client.Close()
+	for _, torrentStorage := range storages {
+		if err := torrentStorage.Close(); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close torrent storage: %w", err))
+		}
+	}
+	if len(closeErrors) > 0 {
+		return fmt.Errorf("close torrent engine: %w", errors.Join(closeErrors...))
 	}
 	return nil
 }
@@ -522,7 +536,12 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 	if record.ID == "" {
 		return models.TorrentInfo{}, errors.New("torrent has no supported info hash")
 	}
-	spec.Storage = libstorage.NewFile(record.DownloadDirectory)
+	// TorrentSpec storage is not owned by anacrolix.Client. Keep it on the
+	// managed torrent so its completion database is deterministically closed
+	// after Drop/Client.Close. This is required on Windows, where SQLite keeps
+	// the database file locked until its connection is explicitly closed.
+	torrentStorage := libstorage.NewFile(record.DownloadDirectory)
+	spec.Storage = torrentStorage
 	// Add safely with payload transfer disabled. Reconciliation below admits it
 	// according to the configured concurrent-download limit.
 	spec.DisallowDataDownload = true
@@ -531,26 +550,31 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.closed {
+		_ = torrentStorage.Close()
 		return models.TorrentInfo{}, errors.New("torrent engine is closed")
 	}
 	if _, exists := e.entries[record.ID]; exists {
+		_ = torrentStorage.Close()
 		return models.TorrentInfo{}, errors.New("this torrent has already been added")
 	}
 	torrent, added, err := e.client.AddTorrentSpec(spec)
 	if err != nil {
+		_ = torrentStorage.Close()
 		return models.TorrentInfo{}, fmt.Errorf("add torrent to engine: %w", err)
 	}
 	if !added {
+		_ = torrentStorage.Close()
 		return models.TorrentInfo{}, errors.New("this torrent has already been added")
 	}
 	if len(record.Trackers) == 0 {
 		record.Trackers = cloneTrackerTiers(spec.Trackers)
 	}
-	entry := &managedTorrent{torrent: torrent, record: record, paused: record.Paused, stopped: record.Stopped, awaitingSelection: record.AwaitingSelection}
+	entry := &managedTorrent{torrent: torrent, storage: torrentStorage, record: record, paused: record.Paused, stopped: record.Stopped, awaitingSelection: record.AwaitingSelection}
 	e.entries[record.ID] = entry
 	if !restoring {
 		if err := e.store.Upsert(record); err != nil {
 			torrent.Drop()
+			_ = torrentStorage.Close()
 			delete(e.entries, record.ID)
 			return models.TorrentInfo{}, fmt.Errorf("persist torrent: %w", err)
 		}
