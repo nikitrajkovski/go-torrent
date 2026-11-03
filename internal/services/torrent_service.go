@@ -45,6 +45,9 @@ func (s *TorrentService) ServiceStartup(ctx context.Context, _ application.Servi
 	s.mu.Lock()
 	s.settings = settings
 	s.mu.Unlock()
+	if err := s.engine.UpdateSettings(settings); err != nil {
+		return fmt.Errorf("apply settings to torrent engine: %w", err)
+	}
 
 	go s.emitSnapshots(ctx)
 	return nil
@@ -68,6 +71,9 @@ func (s *TorrentService) UpdateSettings(settings models.Settings) (models.Settin
 	if err := s.settingsStore.Save(settings); err != nil {
 		return models.Settings{}, err
 	}
+	if err := s.engine.UpdateSettings(settings); err != nil {
+		return models.Settings{}, fmt.Errorf("apply settings to torrent engine: %w", err)
+	}
 	s.mu.Lock()
 	s.settings = settings
 	s.mu.Unlock()
@@ -90,7 +96,9 @@ func (s *TorrentService) ChooseDownloadDirectory() (models.Settings, error) {
 	if directory == "" {
 		return current, nil
 	}
-	return s.UpdateSettings(models.Settings{DownloadDirectory: directory})
+	next := current
+	next.DownloadDirectory = directory
+	return s.UpdateSettings(next)
 }
 
 func (s *TorrentService) AddMagnet(magnet string) (models.TorrentInfo, error) {
@@ -134,6 +142,14 @@ func (s *TorrentService) ResumeTorrent(id string) error {
 
 func (s *TorrentService) StopTorrent(id string) error {
 	return s.engine.Stop(id)
+}
+
+func (s *TorrentService) GetTorrentDetails(id string) (models.TorrentDetails, error) {
+	return s.engine.Details(id)
+}
+
+func (s *TorrentService) SetFileSelected(id string, index int, selected bool) error {
+	return s.engine.SetFileSelected(id, index, selected)
 }
 
 func (s *TorrentService) PauseAll() error {

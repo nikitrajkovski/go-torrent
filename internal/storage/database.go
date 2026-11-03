@@ -17,13 +17,15 @@ const applicationDirectory = "torrentgo"
 // Source is either a magnet URI or base64-encoded metainfo bytes. It is never
 // written to application logs.
 type TorrentRecord struct {
-	ID                string    `json:"id"`
-	Source            string    `json:"source"`
-	SourceType        string    `json:"sourceType"`
-	DownloadDirectory string    `json:"downloadDirectory"`
-	Paused            bool      `json:"paused"`
-	Stopped           bool      `json:"stopped"`
-	AddedAt           time.Time `json:"addedAt"`
+	ID                string     `json:"id"`
+	Source            string     `json:"source"`
+	SourceType        string     `json:"sourceType"`
+	DownloadDirectory string     `json:"downloadDirectory"`
+	Paused            bool       `json:"paused"`
+	Stopped           bool       `json:"stopped"`
+	SelectedFiles     []bool     `json:"selectedFiles,omitempty"`
+	Trackers          [][]string `json:"trackers,omitempty"`
+	AddedAt           time.Time  `json:"addedAt"`
 }
 
 // Store keeps the small torrent index in a local JSON file. A database is not
@@ -88,6 +90,23 @@ func (s *Store) UpdateState(id string, paused, stopped bool) error {
 		if records[index].ID == id {
 			records[index].Paused = paused
 			records[index].Stopped = stopped
+			return s.saveLocked(records)
+		}
+	}
+	return fmt.Errorf("torrent %q is not persisted", id)
+}
+
+// UpdateSelectedFiles persists the choices by stable metainfo file index.
+func (s *Store) UpdateSelectedFiles(id string, selected []bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	records, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	for index := range records {
+		if records[index].ID == id {
+			records[index].SelectedFiles = append([]bool(nil), selected...)
 			return s.saveLocked(records)
 		}
 	}

@@ -2,6 +2,7 @@ import { Events } from "@wailsio/runtime";
 import { TorrentgoTorrentImport, TorrentgoTorrents } from "../../bindings/events";
 import {
   Settings,
+  TorrentDetails,
   TorrentImportResult,
   TorrentSnapshot,
 } from "../../bindings/github.com/nikitrajkovski/torrentgo/internal/models/models";
@@ -10,6 +11,7 @@ import {
   AddTorrentFile,
   ChooseDownloadDirectory,
   GetSettings,
+  GetTorrentDetails,
   GetTorrents,
   PauseAll,
   PauseTorrent,
@@ -17,6 +19,7 @@ import {
   ResumeAll,
   ResumeTorrent,
   StopTorrent,
+  SetFileSelected,
   UpdateSettings,
 } from "../../bindings/github.com/nikitrajkovski/torrentgo/internal/services/torrentservice";
 
@@ -25,6 +28,7 @@ export const torrentService = {
   addTorrentFile: AddTorrentFile,
   chooseDownloadDirectory: ChooseDownloadDirectory,
   getSettings: GetSettings,
+  getTorrentDetails: GetTorrentDetails,
   getTorrents: GetTorrents,
   pause: PauseTorrent,
   pauseAll: PauseAll,
@@ -32,6 +36,7 @@ export const torrentService = {
   resume: ResumeTorrent,
   resumeAll: ResumeAll,
   stop: StopTorrent,
+  setFileSelected: SetFileSelected,
   updateSettings: UpdateSettings,
   subscribe(onSnapshot: (snapshot: TorrentSnapshot) => void): () => void {
     return Events.On(TorrentgoTorrents, (event) => {

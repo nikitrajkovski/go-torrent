@@ -15,8 +15,10 @@ import (
 const applicationDirectory = "torrentgo"
 
 const (
-	themeDark  = "dark"
-	themeLight = "light"
+	themeDark              = "dark"
+	themeLight             = "light"
+	maxTransferLimit       = int64(1 << 40)
+	maxConcurrentDownloads = 64
 )
 
 // Store persists user preferences in the operating system configuration
@@ -122,6 +124,15 @@ func validate(settings models.Settings) error {
 	}
 	if settings.Theme != themeDark && settings.Theme != themeLight {
 		return errors.New("theme must be dark or light")
+	}
+	if settings.DownloadLimit < 0 || settings.DownloadLimit > maxTransferLimit {
+		return errors.New("download limit must be between 0 and 1 TiB/s")
+	}
+	if settings.UploadLimit < 0 || settings.UploadLimit > maxTransferLimit {
+		return errors.New("upload limit must be between 0 and 1 TiB/s")
+	}
+	if settings.MaxConcurrentDownloads < 0 || settings.MaxConcurrentDownloads > maxConcurrentDownloads {
+		return fmt.Errorf("concurrent download limit must be between 0 and %d", maxConcurrentDownloads)
 	}
 	return nil
 }

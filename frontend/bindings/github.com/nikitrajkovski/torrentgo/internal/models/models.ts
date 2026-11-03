@@ -11,6 +11,9 @@ import { Create as $Create } from "@wailsio/runtime";
 export class Settings {
     "downloadDirectory": string;
     "theme": string;
+    "downloadLimit": number;
+    "uploadLimit": number;
+    "maxConcurrentDownloads": number;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -19,6 +22,15 @@ export class Settings {
         }
         if (!("theme" in $$source)) {
             this["theme"] = "";
+        }
+        if (!("downloadLimit" in $$source)) {
+            this["downloadLimit"] = 0;
+        }
+        if (!("uploadLimit" in $$source)) {
+            this["uploadLimit"] = 0;
+        }
+        if (!("maxConcurrentDownloads" in $$source)) {
+            this["maxConcurrentDownloads"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -30,6 +42,100 @@ export class Settings {
     static createFrom($$source: any = {}): Settings {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new Settings($$parsedSource as Partial<Settings>);
+    }
+}
+
+/**
+ * TorrentDetails contains the information that can safely be inspected for one
+ * live torrent. File, peer, and tracker data is omitted until metainfo exists.
+ */
+export class TorrentDetails {
+    "info": TorrentInfo;
+    "metadataPending": boolean;
+    "files": TorrentFile[];
+    "peers": TorrentPeer[];
+    "trackers": TorrentTracker[];
+
+    /** Creates a new TorrentDetails instance. */
+    constructor($$source: Partial<TorrentDetails> = {}) {
+        if (!("info" in $$source)) {
+            this["info"] = (new TorrentInfo());
+        }
+        if (!("metadataPending" in $$source)) {
+            this["metadataPending"] = false;
+        }
+        if (!("files" in $$source)) {
+            this["files"] = [];
+        }
+        if (!("peers" in $$source)) {
+            this["peers"] = [];
+        }
+        if (!("trackers" in $$source)) {
+            this["trackers"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TorrentDetails instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TorrentDetails {
+        const $$createField0_0 = $$createType0;
+        const $$createField2_0 = $$createType2;
+        const $$createField3_0 = $$createType4;
+        const $$createField4_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("info" in $$parsedSource) {
+            $$parsedSource["info"] = $$createField0_0($$parsedSource["info"]);
+        }
+        if ("files" in $$parsedSource) {
+            $$parsedSource["files"] = $$createField2_0($$parsedSource["files"]);
+        }
+        if ("peers" in $$parsedSource) {
+            $$parsedSource["peers"] = $$createField3_0($$parsedSource["peers"]);
+        }
+        if ("trackers" in $$parsedSource) {
+            $$parsedSource["trackers"] = $$createField4_0($$parsedSource["trackers"]);
+        }
+        return new TorrentDetails($$parsedSource as Partial<TorrentDetails>);
+    }
+}
+
+export class TorrentFile {
+    "index": number;
+    "path": string;
+    "size": number;
+    "downloaded": number;
+    "selected": boolean;
+
+    /** Creates a new TorrentFile instance. */
+    constructor($$source: Partial<TorrentFile> = {}) {
+        if (!("index" in $$source)) {
+            this["index"] = 0;
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("size" in $$source)) {
+            this["size"] = 0;
+        }
+        if (!("downloaded" in $$source)) {
+            this["downloaded"] = 0;
+        }
+        if (!("selected" in $$source)) {
+            this["selected"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TorrentFile instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TorrentFile {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TorrentFile($$parsedSource as Partial<TorrentFile>);
     }
 }
 
@@ -142,6 +248,47 @@ export class TorrentInfo {
 }
 
 /**
+ * TorrentPeer describes a connected peer. Addresses are available only while
+ * the torrent engine has an active connection to that peer.
+ */
+export class TorrentPeer {
+    "address": string;
+    "network": string;
+    "client": string;
+    "downloadRate": number;
+    "uploadRate": number;
+
+    /** Creates a new TorrentPeer instance. */
+    constructor($$source: Partial<TorrentPeer> = {}) {
+        if (!("address" in $$source)) {
+            this["address"] = "";
+        }
+        if (!("network" in $$source)) {
+            this["network"] = "";
+        }
+        if (!("client" in $$source)) {
+            this["client"] = "";
+        }
+        if (!("downloadRate" in $$source)) {
+            this["downloadRate"] = 0;
+        }
+        if (!("uploadRate" in $$source)) {
+            this["uploadRate"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TorrentPeer instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TorrentPeer {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TorrentPeer($$parsedSource as Partial<TorrentPeer>);
+    }
+}
+
+/**
  * TorrentSnapshot is emitted as a single event so the frontend can update its
  * complete view without polling individual torrents.
  */
@@ -177,7 +324,7 @@ export class TorrentSnapshot {
      * Creates a new TorrentSnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): TorrentSnapshot {
-        const $$createField0_0 = $$createType1;
+        const $$createField0_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("torrents" in $$parsedSource) {
             $$parsedSource["torrents"] = $$createField0_0($$parsedSource["torrents"]);
@@ -204,6 +351,41 @@ export enum TorrentStatus {
     TorrentStatusError = "Error",
 };
 
+/**
+ * TorrentTracker is a configured announce URL. The torrent library does not
+ * expose a stable public per-tracker health API, so no health is inferred.
+ */
+export class TorrentTracker {
+    "url": string;
+    "tier": number;
+
+    /** Creates a new TorrentTracker instance. */
+    constructor($$source: Partial<TorrentTracker> = {}) {
+        if (!("url" in $$source)) {
+            this["url"] = "";
+        }
+        if (!("tier" in $$source)) {
+            this["tier"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TorrentTracker instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TorrentTracker {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TorrentTracker($$parsedSource as Partial<TorrentTracker>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = TorrentInfo.createFrom;
-const $$createType1 = $Create.Array($$createType0);
+const $$createType1 = TorrentFile.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = TorrentPeer.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = TorrentTracker.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = $Create.Array($$createType0);

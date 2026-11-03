@@ -24,3 +24,16 @@ func TestStorePersistsSettings(t *testing.T) {
 		t.Fatalf("Load() = %#v, want %#v", got, want)
 	}
 }
+
+func TestStoreRejectsInvalidTransferSettings(t *testing.T) {
+	t.Parallel()
+	store := NewStoreAt(filepath.Join(t.TempDir(), "settings.json"))
+	err := store.Save(models.Settings{DownloadDirectory: t.TempDir(), Theme: "dark", DownloadLimit: -1})
+	if err == nil {
+		t.Fatal("Save() error = nil, want invalid download limit")
+	}
+	err = store.Save(models.Settings{DownloadDirectory: t.TempDir(), Theme: "dark", MaxConcurrentDownloads: maxConcurrentDownloads + 1})
+	if err == nil {
+		t.Fatal("Save() error = nil, want invalid concurrent download limit")
+	}
+}

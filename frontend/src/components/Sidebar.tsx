@@ -33,7 +33,6 @@ export function Sidebar({ activeView, counts, onAdd, onSelect }: SidebarProps) {
         </div>
       </nav>
       <div className="tg-sidebar-spacer" />
-      <p className="tg-side-note">TorrentGo runs locally. No ads, telemetry, or cloud downloads.</p>
       <button className={`tg-settings-link ${activeView === "settings" ? "is-active" : ""}`} onClick={() => onSelect("settings")} type="button"><Settings2 size={17} /> Settings</button>
     </aside>
   );

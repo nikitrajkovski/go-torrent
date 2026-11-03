@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	libtorrent "github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
 	libstorage "github.com/anacrolix/torrent/storage"
@@ -24,33 +26,39 @@ import (
 )
 
 const (
-	sourceTypeMagnet      = "magnet"
-	sourceTypeTorrentFile = "torrent-file"
-	maxTorrentFileSize    = 10 << 20
+	sourceTypeMagnet        = "magnet"
+	sourceTypeTorrentFile   = "torrent-file"
+	maxTorrentFileSize      = 10 << 20
+	defaultRateLimiterBurst = 1 << 20
+	minimumRateLimiterBurst = 16 << 10
 )
 
 type managedTorrent struct {
-	torrent       *libtorrent.Torrent
-	record        storage.TorrentRecord
-	paused        bool
-	stopped       bool
-	lastDownload  int64
-	lastUpload    int64
-	lastUpdatedAt time.Time
+	torrent        *libtorrent.Torrent
+	record         storage.TorrentRecord
+	paused         bool
+	stopped        bool
+	activeTransfer bool
+	lastDownload   int64
+	lastUpload     int64
+	lastUpdatedAt  time.Time
 }
 
 // Engine is the local BitTorrent boundary. It has no dependency on Wails or
 // React, which keeps protocol and filesystem operations testable in isolation.
 type Engine struct {
-	mu      sync.Mutex
-	client  *libtorrent.Client
-	entries map[string]*managedTorrent
-	store   *storage.Store
-	logger  *slog.Logger
-	closed  bool
+	mu                     sync.Mutex
+	client                 *libtorrent.Client
+	entries                map[string]*managedTorrent
+	store                  *storage.Store
+	logger                 *slog.Logger
+	downloadLimiter        *rate.Limiter
+	uploadLimiter          *rate.Limiter
+	maxConcurrentDownloads int
+	closed                 bool
 }
 
-func New(store *storage.Store, logger *slog.Logger) (*Engine, error) {
+func New(store *storage.Store, logger *slog.Logger, initialSettings ...models.Settings) (*Engine, error) {
 	if store == nil {
 		return nil, errors.New("torrent store is required")
 	}
@@ -58,22 +66,35 @@ func New(store *storage.Store, logger *slog.Logger) (*Engine, error) {
 		logger = slog.Default()
 	}
 
+	settings := models.Settings{}
+	if len(initialSettings) > 0 {
+		settings = initialSettings[0]
+	}
 	clientConfig := libtorrent.NewDefaultClientConfig()
 	clientConfig.DataDir = filepath.Dir(store.Path())
 	clientConfig.ListenPort = 0
 	clientConfig.Seed = true
 	clientConfig.NoDefaultPortForwarding = true
 	clientConfig.Slogger = logger
+	downloadLimiter := rate.NewLimiter(rate.Inf, defaultRateLimiterBurst)
+	uploadLimiter := rate.NewLimiter(rate.Inf, defaultRateLimiterBurst)
+	setRateLimit(downloadLimiter, settings.DownloadLimit)
+	setRateLimit(uploadLimiter, settings.UploadLimit)
+	clientConfig.DownloadRateLimiter = downloadLimiter
+	clientConfig.UploadRateLimiter = uploadLimiter
 	client, err := libtorrent.NewClient(clientConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create torrent client: %w", err)
 	}
 
 	engine := &Engine{
-		client:  client,
-		entries: make(map[string]*managedTorrent),
-		store:   store,
-		logger:  logger,
+		client:                 client,
+		entries:                make(map[string]*managedTorrent),
+		store:                  store,
+		logger:                 logger,
+		downloadLimiter:        downloadLimiter,
+		uploadLimiter:          uploadLimiter,
+		maxConcurrentDownloads: settings.MaxConcurrentDownloads,
 	}
 	if err := engine.restore(); err != nil {
 		client.Close()
@@ -99,6 +120,7 @@ func (e *Engine) AddMagnet(magnet, downloadDirectory string) (models.TorrentInfo
 		Source:            magnet,
 		SourceType:        sourceTypeMagnet,
 		DownloadDirectory: downloadDirectory,
+		Trackers:          cloneTrackerTiers(spec.Trackers),
 		AddedAt:           time.Now().UTC(),
 	}
 	return e.addSpec(spec, record, false)
@@ -144,9 +166,26 @@ func (e *Engine) AddTorrentFile(path, downloadDirectory string) (models.TorrentI
 		Source:            base64.StdEncoding.EncodeToString(rawMetainfo),
 		SourceType:        sourceTypeTorrentFile,
 		DownloadDirectory: downloadDirectory,
+		Trackers:          cloneTrackerTiers(spec.Trackers),
 		AddedAt:           time.Now().UTC(),
 	}
 	return e.addSpec(spec, record, false)
+}
+
+// UpdateSettings changes live global transfer controls. The rate-limiters are
+// retained by the client, so updating their limits affects existing and future
+// peer connections without restarting the torrent engine.
+func (e *Engine) UpdateSettings(settings models.Settings) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed {
+		return errors.New("torrent engine is closed")
+	}
+	setRateLimit(e.downloadLimiter, settings.DownloadLimit)
+	setRateLimit(e.uploadLimiter, settings.UploadLimit)
+	e.maxConcurrentDownloads = settings.MaxConcurrentDownloads
+	e.reconcileDownloadsLocked()
+	return nil
 }
 
 func (e *Engine) Pause(id string) error {
@@ -165,6 +204,7 @@ func (e *Engine) Pause(id string) error {
 	entry.stopped = false
 	entry.record.Paused = true
 	entry.record.Stopped = false
+	e.reconcileDownloadsLocked()
 	return nil
 }
 
@@ -178,13 +218,11 @@ func (e *Engine) Resume(id string) error {
 	if err := e.store.UpdateState(id, false, false); err != nil {
 		return fmt.Errorf("persist resumed torrent: %w", err)
 	}
-	entry.torrent.AllowDataDownload()
-	entry.torrent.AllowDataUpload()
 	entry.paused = false
 	entry.stopped = false
 	entry.record.Paused = false
 	entry.record.Stopped = false
-	go downloadAllWhenReady(entry.torrent)
+	e.reconcileDownloadsLocked()
 	return nil
 }
 
@@ -206,6 +244,7 @@ func (e *Engine) Stop(id string) error {
 	entry.stopped = true
 	entry.record.Paused = false
 	entry.record.Stopped = true
+	e.reconcileDownloadsLocked()
 	return nil
 }
 
@@ -221,13 +260,12 @@ func (e *Engine) PauseAll() error {
 		return fmt.Errorf("persist paused torrents: %w", err)
 	}
 	for _, entry := range e.entries {
-		entry.torrent.DisallowDataDownload()
-		entry.torrent.DisallowDataUpload()
 		entry.paused = true
 		entry.stopped = false
 		entry.record.Paused = true
 		entry.record.Stopped = false
 	}
+	e.reconcileDownloadsLocked()
 	return nil
 }
 
@@ -244,14 +282,12 @@ func (e *Engine) ResumeAll() error {
 		return fmt.Errorf("persist resumed torrents: %w", err)
 	}
 	for _, entry := range e.entries {
-		entry.torrent.AllowDataDownload()
-		entry.torrent.AllowDataUpload()
 		entry.paused = false
 		entry.stopped = false
 		entry.record.Paused = false
 		entry.record.Stopped = false
-		go downloadAllWhenReady(entry.torrent)
 	}
+	e.reconcileDownloadsLocked()
 	return nil
 }
 
@@ -273,9 +309,95 @@ func (e *Engine) Remove(id string) error {
 	return nil
 }
 
+// Details returns only values the torrent library currently exposes. It does
+// not infer tracker health or retain disconnected peer addresses.
+func (e *Engine) Details(id string) (models.TorrentDetails, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	entry, err := e.entryLocked(id)
+	if err != nil {
+		return models.TorrentDetails{}, err
+	}
+	details := models.TorrentDetails{Info: snapshotEntry(entry, time.Now())}
+	if entry.torrent.Info() == nil {
+		details.MetadataPending = true
+		return details, nil
+	}
+	files := entry.torrent.Files()
+	details.Files = make([]models.TorrentFile, 0, len(files))
+	for index, file := range files {
+		details.Files = append(details.Files, models.TorrentFile{
+			Index:      index,
+			Path:       file.DisplayPath(),
+			Size:       file.Length(),
+			Downloaded: file.BytesCompleted(),
+			Selected:   isFileSelected(entry.record.SelectedFiles, index),
+		})
+	}
+	for tier, urls := range entry.record.Trackers {
+		for _, trackerURL := range urls {
+			details.Trackers = append(details.Trackers, models.TorrentTracker{URL: trackerURL, Tier: tier + 1})
+		}
+	}
+	for _, peer := range entry.torrent.PeerConns() {
+		client := "Unknown"
+		if value := peer.PeerClientName.Load(); value != nil {
+			if name, ok := value.(string); ok && name != "" {
+				client = name
+			}
+		}
+		address := "Unknown"
+		if peer.RemoteAddr != nil {
+			address = peer.RemoteAddr.String()
+		}
+		stats := peer.Stats()
+		details.Peers = append(details.Peers, models.TorrentPeer{
+			Address:      address,
+			Network:      peer.Network,
+			Client:       client,
+			DownloadRate: stats.DownloadRate,
+			UploadRate:   stats.LastWriteUploadRate,
+		})
+	}
+	sort.Slice(details.Peers, func(left, right int) bool { return details.Peers[left].Address < details.Peers[right].Address })
+	return details, nil
+}
+
+// SetFileSelected changes piece priority for an individual metainfo file. A
+// file can only be selected after its metadata is available.
+func (e *Engine) SetFileSelected(id string, index int, selected bool) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	entry, err := e.entryLocked(id)
+	if err != nil {
+		return err
+	}
+	if entry.torrent.Info() == nil {
+		return errors.New("file selection is available after torrent metadata is fetched")
+	}
+	files := entry.torrent.Files()
+	if index < 0 || index >= len(files) {
+		return fmt.Errorf("file index %d is not available", index)
+	}
+	selection := normalizedSelection(entry.record.SelectedFiles, len(files))
+	selection[index] = selected
+	if err := e.store.UpdateSelectedFiles(id, selection); err != nil {
+		return fmt.Errorf("persist file selection: %w", err)
+	}
+	entry.record.SelectedFiles = selection
+	if selected {
+		files[index].Download()
+	} else {
+		files[index].SetPriority(libtorrent.PiecePriorityNone)
+	}
+	e.reconcileDownloadsLocked()
+	return nil
+}
+
 func (e *Engine) Snapshot() models.TorrentSnapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.reconcileDownloadsLocked()
 
 	now := time.Now()
 	snapshot := models.TorrentSnapshot{
@@ -339,8 +461,10 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 		return models.TorrentInfo{}, errors.New("torrent has no supported info hash")
 	}
 	spec.Storage = libstorage.NewFile(record.DownloadDirectory)
-	spec.DisallowDataDownload = record.Paused || record.Stopped
-	spec.DisallowDataUpload = record.Paused || record.Stopped
+	// Add safely with payload transfer disabled. Reconciliation below admits it
+	// according to the configured concurrent-download limit.
+	spec.DisallowDataDownload = true
+	spec.DisallowDataUpload = true
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -357,6 +481,9 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 	if !added {
 		return models.TorrentInfo{}, errors.New("this torrent has already been added")
 	}
+	if len(record.Trackers) == 0 {
+		record.Trackers = cloneTrackerTiers(spec.Trackers)
+	}
 	entry := &managedTorrent{torrent: torrent, record: record, paused: record.Paused, stopped: record.Stopped}
 	e.entries[record.ID] = entry
 	if !restoring {
@@ -366,9 +493,7 @@ func (e *Engine) addSpec(spec *libtorrent.TorrentSpec, record storage.TorrentRec
 			return models.TorrentInfo{}, fmt.Errorf("persist torrent: %w", err)
 		}
 	}
-	if !entry.paused && !entry.stopped {
-		go downloadAllWhenReady(torrent)
-	}
+	e.reconcileDownloadsLocked()
 	return snapshotEntry(entry, time.Now()), nil
 }
 
@@ -383,9 +508,58 @@ func (e *Engine) entryLocked(id string) (*managedTorrent, error) {
 	return entry, nil
 }
 
-func downloadAllWhenReady(torrent *libtorrent.Torrent) {
+func (e *Engine) reconcileDownloadsLocked() {
+	entries := make([]*managedTorrent, 0, len(e.entries))
+	for _, entry := range e.entries {
+		if entry.paused || entry.stopped || !hasSelectedFiles(entry.record.SelectedFiles) {
+			entry.activeTransfer = false
+			entry.torrent.DisallowDataDownload()
+			entry.torrent.DisallowDataUpload()
+			continue
+		}
+		if entry.torrent.Info() != nil && entry.torrent.Complete().Bool() {
+			entry.activeTransfer = false
+			entry.torrent.DisallowDataDownload()
+			entry.torrent.AllowDataUpload()
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	sort.Slice(entries, func(left, right int) bool {
+		return entries[left].record.AddedAt.Before(entries[right].record.AddedAt)
+	})
+	active := 0
+	for _, entry := range entries {
+		shouldRun := e.maxConcurrentDownloads == 0 || active < e.maxConcurrentDownloads
+		if shouldRun {
+			if !entry.activeTransfer {
+				entry.activeTransfer = true
+				go downloadSelectedWhenReady(entry.torrent, entry.record.SelectedFiles)
+			}
+			entry.torrent.AllowDataDownload()
+			entry.torrent.AllowDataUpload()
+			active++
+			continue
+		}
+		entry.activeTransfer = false
+		entry.torrent.DisallowDataDownload()
+		entry.torrent.DisallowDataUpload()
+	}
+}
+
+func downloadSelectedWhenReady(torrent *libtorrent.Torrent, selected []bool) {
 	<-torrent.GotInfo()
-	torrent.DownloadAll()
+	if len(selected) == 0 {
+		torrent.DownloadAll()
+		return
+	}
+	for index, file := range torrent.Files() {
+		if isFileSelected(selected, index) {
+			file.Download()
+		} else {
+			file.SetPriority(libtorrent.PiecePriorityNone)
+		}
+	}
 }
 
 func snapshotEntry(entry *managedTorrent, now time.Time) models.TorrentInfo {
@@ -499,4 +673,59 @@ func validateDownloadDirectory(directory string) error {
 		return errors.New("download directory is not a directory")
 	}
 	return nil
+}
+
+func setRateLimit(limiter *rate.Limiter, bytesPerSecond int64) {
+	if bytesPerSecond == 0 {
+		limiter.SetLimit(rate.Inf)
+		limiter.SetBurst(defaultRateLimiterBurst)
+		return
+	}
+	burst := bytesPerSecond
+	if burst < minimumRateLimiterBurst {
+		burst = minimumRateLimiterBurst
+	}
+	if burst > defaultRateLimiterBurst {
+		burst = defaultRateLimiterBurst
+	}
+	limiter.SetLimit(rate.Limit(bytesPerSecond))
+	limiter.SetBurst(int(burst))
+}
+
+func cloneTrackerTiers(trackers [][]string) [][]string {
+	if len(trackers) == 0 {
+		return nil
+	}
+	clone := make([][]string, len(trackers))
+	for index := range trackers {
+		clone[index] = append([]string(nil), trackers[index]...)
+	}
+	return clone
+}
+
+func normalizedSelection(selection []bool, size int) []bool {
+	if size <= 0 {
+		return nil
+	}
+	normalized := make([]bool, size)
+	for index := range normalized {
+		normalized[index] = isFileSelected(selection, index)
+	}
+	return normalized
+}
+
+func isFileSelected(selection []bool, index int) bool {
+	return len(selection) == 0 || (index >= 0 && index < len(selection) && selection[index])
+}
+
+func hasSelectedFiles(selection []bool) bool {
+	if len(selection) == 0 {
+		return true
+	}
+	for _, selected := range selection {
+		if selected {
+			return true
+		}
+	}
+	return false
 }

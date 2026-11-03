@@ -4,7 +4,7 @@ TorrentGo is a lightweight, local-first BitTorrent desktop client for Windows, L
 
 ## Status
 
-**Phases 1 and 2 are implemented; Phase 3 is in progress.** TorrentGo can add legal `.torrent` files and magnet links, download to a selected local folder, seed completed content, show real transfer progress and rates, and recover its local torrent list after a restart.
+**Phases 1–3 and the core transfer-management work from Phase 4 are implemented.** TorrentGo can add legal `.torrent` files and magnet links, download to a selected local folder, seed completed content, show real transfer progress and rates, and recover its local torrent list after a restart.
 
 There is no telemetry, advertising, cloud download service, or hidden background process.
 
@@ -39,6 +39,9 @@ TorrentGo/
 - Push a complete snapshot to the UI once per second instead of polling each torrent independently.
 - Provide sidebar filters, search, a selected-torrent general-details panel, and a real settings screen with a persisted light/dark theme preference.
 - Accept `.torrent` files dropped from the native file manager onto the application window.
+- Select individual files after metainfo is available; selection is persisted and changes the torrent library's file priorities.
+- Apply persisted global upload/download rate limits and a concurrent-download queue without restarting the client.
+- Display connected peer details and configured tracker URLs when the torrent library supplies them.
 
 ## Prerequisites
 
@@ -78,6 +81,7 @@ Malformed `.torrent` inputs are size-limited and parsed in Go before they reach 
 
 ## Current limitations
 
-- Per-file selection, bandwidth limits, concurrent-download limits, detailed peer/tracker tabs, context menus, notifications, tray behavior, and installers are planned later phases.
+- Context menus, notifications, tray behavior, installers, proxy configuration, and tracker-health reporting are planned later phases.
+- File selection becomes available after metadata arrives. Tracker URLs are shown as configured; the engine does not expose a stable public per-tracker health API.
 - Downloaded files cannot be removed from the UI yet. This prevents accidental deletion from a destination folder shared by multiple torrents.
 - TorrentGo has no anonymity layer or proxy configuration yet.

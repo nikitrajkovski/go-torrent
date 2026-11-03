@@ -54,9 +54,15 @@ export function GetSettings(): $CancellablePromise<models$0.Settings> {
     });
 }
 
+export function GetTorrentDetails(id: string): $CancellablePromise<models$0.TorrentDetails> {
+    return $Call.ByID(4031353278, id).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
 export function GetTorrents(): $CancellablePromise<models$0.TorrentSnapshot> {
     return $Call.ByID(3804149969).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
@@ -80,6 +86,10 @@ export function ResumeTorrent(id: string): $CancellablePromise<void> {
     return $Call.ByID(264624773, id);
 }
 
+export function SetFileSelected(id: string, index: number, selected: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1565206149, id, index, selected);
+}
+
 export function StopTorrent(id: string): $CancellablePromise<void> {
     return $Call.ByID(706250084, id);
 }
@@ -93,4 +103,5 @@ export function UpdateSettings(settings: models$0.Settings): $CancellablePromise
 // Private type creation functions
 const $$createType0 = models$0.TorrentInfo.createFrom;
 const $$createType1 = models$0.Settings.createFrom;
-const $$createType2 = models$0.TorrentSnapshot.createFrom;
+const $$createType2 = models$0.TorrentDetails.createFrom;
+const $$createType3 = models$0.TorrentSnapshot.createFrom;

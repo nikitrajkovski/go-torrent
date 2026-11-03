@@ -2,6 +2,7 @@ package storage
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -91,5 +92,24 @@ func TestStoreUpdateStatePersistsStopped(t *testing.T) {
 	}
 	if len(records) != 1 || records[0].Paused || !records[0].Stopped {
 		t.Fatalf("Load() = %#v, want one stopped record", records)
+	}
+}
+
+func TestStoreUpdateSelectedFiles(t *testing.T) {
+	t.Parallel()
+	store := NewStoreAt(filepath.Join(t.TempDir(), "torrents.json"))
+	record := TorrentRecord{ID: "files", Source: "magnet:?xt=urn:btih:files", SourceType: "magnet", DownloadDirectory: t.TempDir(), AddedAt: time.Now().UTC()}
+	if err := store.Upsert(record); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+	if err := store.UpdateSelectedFiles(record.ID, []bool{true, false, true}); err != nil {
+		t.Fatalf("UpdateSelectedFiles() error = %v", err)
+	}
+	records, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(records) != 1 || !reflect.DeepEqual(records[0].SelectedFiles, []bool{true, false, true}) {
+		t.Fatalf("Load() = %#v, want persisted selected files", records)
 	}
 }

@@ -3,8 +3,12 @@
 
 export {
     Settings,
+    TorrentDetails,
+    TorrentFile,
     TorrentImportResult,
     TorrentInfo,
+    TorrentPeer,
     TorrentSnapshot,
-    TorrentStatus
+    TorrentStatus,
+    TorrentTracker
 } from "./models.js";

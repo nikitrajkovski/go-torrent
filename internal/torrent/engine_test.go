@@ -2,6 +2,7 @@ package torrent
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -173,6 +174,56 @@ func TestStopPersistsAndRecoversTorrent(t *testing.T) {
 	assertStopped(t, recovered.Snapshot(), added.ID)
 }
 
+func TestConcurrentDownloadLimitQueuesAdditionalTorrents(t *testing.T) {
+	store := storage.NewStoreAt(filepath.Join(t.TempDir(), "torrents.json"))
+	engine, err := New(store, nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	if err := engine.UpdateSettings(models.Settings{MaxConcurrentDownloads: 1}); err != nil {
+		t.Fatalf("UpdateSettings() error = %v", err)
+	}
+	for _, hash := range []string{"4123456789abcdef0123456789abcdef01234567", "5123456789abcdef0123456789abcdef01234567"} {
+		if _, err := engine.AddMagnet("magnet:?xt=urn:btih:"+hash, t.TempDir()); err != nil {
+			t.Fatalf("AddMagnet() error = %v", err)
+		}
+	}
+	engine.mu.Lock()
+	active := 0
+	for _, entry := range engine.entries {
+		if entry.activeTransfer {
+			active++
+		}
+	}
+	engine.mu.Unlock()
+	if active != 1 {
+		t.Fatalf("active transfers = %d, want 1", active)
+	}
+	if err := engine.UpdateSettings(models.Settings{MaxConcurrentDownloads: 2}); err != nil {
+		t.Fatalf("UpdateSettings(2) error = %v", err)
+	}
+	if got := activeTransferCount(engine); got != 2 {
+		t.Fatalf("active transfers after increasing limit = %d, want 2", got)
+	}
+	if err := engine.UpdateSettings(models.Settings{MaxConcurrentDownloads: 1}); err != nil {
+		t.Fatalf("UpdateSettings(1) error = %v", err)
+	}
+	if got := activeTransferCount(engine); got != 1 {
+		t.Fatalf("active transfers after decreasing limit = %d, want 1", got)
+	}
+}
+
+func TestSelectionHelpers(t *testing.T) {
+	t.Parallel()
+	if got := normalizedSelection(nil, 3); !reflect.DeepEqual(got, []bool{true, true, true}) {
+		t.Fatalf("normalizedSelection(nil, 3) = %#v", got)
+	}
+	if !hasSelectedFiles([]bool{false, true}) || hasSelectedFiles([]bool{false, false}) {
+		t.Fatal("hasSelectedFiles() returned an unexpected value")
+	}
+}
+
 func assertAllPaused(t *testing.T, snapshot models.TorrentSnapshot, paused bool) {
 	t.Helper()
 	if len(snapshot.Torrents) != 2 {
@@ -194,4 +245,16 @@ func assertStopped(t *testing.T, snapshot models.TorrentSnapshot, id string) {
 	if torrent.ID != id || torrent.Status != models.TorrentStatusStopped || torrent.Paused {
 		t.Fatalf("Snapshot() = %#v, want stopped torrent %q", snapshot, id)
 	}
+}
+
+func activeTransferCount(engine *Engine) int {
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	count := 0
+	for _, entry := range engine.entries {
+		if entry.activeTransfer {
+			count++
+		}
+	}
+	return count
 }

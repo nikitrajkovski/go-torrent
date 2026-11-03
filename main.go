@@ -28,11 +28,15 @@ func main() {
 	if err != nil {
 		log.Fatal("create settings store: ", err)
 	}
+	settings, err := settingsStore.Load()
+	if err != nil {
+		log.Fatal("load settings: ", err)
+	}
 	torrentStore, err := storage.NewStore()
 	if err != nil {
 		log.Fatal("create torrent store: ", err)
 	}
-	engine, err := torrent.New(torrentStore, logger)
+	engine, err := torrent.New(torrentStore, logger, settings)
 	if err != nil {
 		log.Fatal("start torrent engine: ", err)
 	}
