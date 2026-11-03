@@ -1,10 +1,12 @@
 # TorrentGo
 
-TorrentGo is a planned lightweight, local-first BitTorrent desktop client for Windows, Linux, and macOS. It will use Go, Wails v3, React, TypeScript, Vite, Tailwind CSS, Lucide, and `github.com/anacrolix/torrent`.
+TorrentGo is a lightweight, local-first BitTorrent desktop client for Windows, Linux, and macOS. It uses Go, Wails v3, React, TypeScript, Vite, Tailwind CSS, Lucide, and `github.com/anacrolix/torrent`.
 
 ## Status
 
-This is the **initial project scaffold**. It deliberately has no torrent engine, Wails service bindings, persistence, network activity, or torrent-management UI. The only visible screen confirms that the desktop shell and frontend pipeline are connected.
+**Phase 1 is implemented.** TorrentGo can add legal `.torrent` files and magnet links, download to a selected local folder, seed completed content, show real transfer progress and rates, and recover its local torrent list after a restart.
+
+There is no telemetry, advertising, cloud download service, or hidden background process.
 
 ## Structure
 
@@ -14,14 +16,25 @@ TorrentGo/
 ├── cmd/torrentgo/         # Reserved for future CLI entry points
 ├── frontend/              # React + TypeScript + Vite + Tailwind application
 ├── internal/
-│   ├── config/            # Reserved for local settings
-│   ├── models/            # Reserved for application models
-│   ├── services/          # Reserved for Wails-facing services
-│   ├── storage/           # Reserved for local persistence
-│   └── torrent/           # Reserved for the BitTorrent engine
+│   ├── config/            # Local settings store
+│   ├── models/            # Wails-serialisable view models
+│   ├── services/          # Wails-facing service boundary
+│   ├── storage/           # Persistent local torrent index
+│   └── torrent/           # anacrolix/torrent integration
 ├── main.go                # Wails desktop entry point
 └── go.mod
 ```
+
+## Phase 1 features
+
+- Add valid magnet links and `.torrent` files through native file dialogs.
+- Choose a local destination folder through a native OS folder picker.
+- Download and seed through `anacrolix/torrent`, using its available DHT, tracker, PEX, uTP, TCP, v1, and v2 support.
+- Use verified file-backed piece storage, including detection of existing completed pieces after restart.
+- Show actual completed bytes, size, progress, download/upload rates, ETA, connected peers, and connected seeders.
+- Pause, resume, and remove a torrent from the application. Remove deliberately preserves downloaded payload files.
+- Persist local settings and torrent source records in the operating system configuration directory. `.torrent` metainfo is kept locally so recovery does not depend on its original path.
+- Push a complete snapshot to the UI once per second instead of polling each torrent independently.
 
 ## Prerequisites
 
@@ -29,9 +42,9 @@ TorrentGo/
 - Node.js 22 or newer with npm
 - Wails CLI v3.0.0: `go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0`
 
-For Linux desktop builds, install the native libraries reported by `wails3 doctor`. Windows 10/11 requires WebView2, which is normally already available.
+For Linux desktop builds, install the native libraries reported by `wails3 doctor` (typically `libgtk-4-dev`, `libwebkitgtk-6.0-dev`, and `libsoup-3.0-dev`). Windows 10/11 requires WebView2, which is normally already available.
 
-## Run the scaffold
+## Run in development
 
 ```bash
 cd frontend
@@ -41,6 +54,8 @@ cd ..
 wails3 dev
 ```
 
+Wails automatically regenerates the TypeScript bindings in `frontend/bindings/` during development. They are committed so that a frontend-only typecheck works after a fresh clone as well.
+
 ## Checks
 
 ```bash
@@ -48,10 +63,21 @@ go test ./...
 cd frontend && npm run build
 ```
 
-## Privacy commitment
+On Linux, `go test ./...` requires the GTK/WebKit development packages because the Wails desktop package is part of the root build. The platform-independent checks are:
 
-TorrentGo will not include advertisements, telemetry, analytics SDKs, cloud download infrastructure, or a hidden background service. Future BitTorrent functionality will be local to the user's computer.
+```bash
+go test ./internal/config ./internal/storage ./internal/torrent
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o torrentgo.exe .
+```
 
-## Planned next milestone
+## Privacy and security notes
 
-Phase 1 will introduce the `anacrolix/torrent` engine, a Wails service boundary, magnet and `.torrent` ingestion, local download-directory selection, real progress reporting, and graceful shutdown.
+BitTorrent peers and trackers can observe your public IP address. BitTorrent protocol encryption/obfuscation is not anonymity; TorrentGo does not claim it is. TorrentGo never executes downloaded files and does not delete payload data without a future explicit confirmation flow. Automatic router port forwarding is disabled by default.
+
+Malformed `.torrent` inputs are size-limited and parsed in Go before they reach the engine. The storage backend uses the torrent library’s safe native-path handling for downloaded files.
+
+## Current limitations
+
+- Per-file selection, bandwidth limits, concurrent-download limits, detailed peer/tracker tabs, drag-and-drop, notifications, tray behavior, installers, and light mode are planned later phases.
+- Downloaded files cannot be removed from the UI yet. This prevents accidental deletion from a destination folder shared by multiple torrents.
+- TorrentGo has no anonymity layer or proxy configuration in Phase 1.
