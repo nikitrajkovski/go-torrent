@@ -26,7 +26,6 @@ tasks:
         vars:
           PRODUCTION: "true"
     cmds:
-      - task: generate:desktop
       - wails3 tool package -name {{.APP_NAME}} -format deb -config build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
       - wails3 tool package -name {{.APP_NAME}} -format rpm -config build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
 

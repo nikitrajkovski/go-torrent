@@ -143,6 +143,8 @@ If Torrade is already open, another magnet link or torrent file is imported into
 
 `.github/workflows/quality.yml` checks out the project, installs locked frontend dependencies, runs the strict frontend build and Go tests, then builds the Wails application on Ubuntu and Windows. Enable GitHub Actions in the repository after pushing this branch.
 
+Every push to `main` also runs `.github/workflows/installers.yml`. It packages the Debian and Windows NSIS installers and uploads them to that workflow run as downloadable artifacts. The build version is automatically set to `0.1.<GitHub run number>` for both installers; the source-tree version files remain at the development baseline (`0.1.0`).
+
 ## Privacy and security notes
 
 BitTorrent peers and trackers can observe your public IP address. BitTorrent protocol encryption/obfuscation is not anonymity; Torrade does not claim it is. Torrade never executes downloaded files and does not delete payload data without a future explicit confirmation flow. Automatic router port forwarding is disabled by default.
