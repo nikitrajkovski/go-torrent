@@ -46,10 +46,9 @@ tasks:
           PRODUCTION: "true"
     cmds:
       - task: generate:nsis:tools
+      - task: prepare:nsis:binary
       - wails3 generate webview2bootstrapper -dir .
-      # NSIS runs from build/windows/nsis; a relative input path avoids
-      # Git Bash/PowerShell rewriting an absolute Windows path.
-      - makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="../../../{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
+      - makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.APP_NAME}}.exe" project.nsi
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
       ARG_FLAG: '{{if eq .ARCH "amd64"}}AMD64{{else}}ARM64{{end}}'
@@ -63,6 +62,15 @@ tasks:
       - cmd: powershell Copy-Item -Force .wails-assets/windows/nsis/wails_tools.nsh ./wails_tools.nsh
         platforms: [windows]
       - cmd: cp .wails-assets/windows/nsis/wails_tools.nsh ./wails_tools.nsh
+        platforms: [linux, darwin]
+
+  prepare:nsis:binary:
+    summary: Stage the Windows executable beside the NSIS project
+    dir: build/windows/nsis
+    cmds:
+      - cmd: powershell Copy-Item -Force "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" "./{{.APP_NAME}}.exe"
+        platforms: [windows]
+      - cmd: cp "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" "./{{.APP_NAME}}.exe"
         platforms: [linux, darwin]
 
   run:
