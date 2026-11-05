@@ -47,7 +47,9 @@ tasks:
     cmds:
       - task: generate:nsis:tools
       - wails3 generate webview2bootstrapper -dir .
-      - makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
+      # NSIS runs from build/windows/nsis; a relative input path avoids
+      # Git Bash/PowerShell rewriting an absolute Windows path.
+      - makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="../../../{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
       ARG_FLAG: '{{if eq .ARCH "amd64"}}AMD64{{else}}ARM64{{end}}'
