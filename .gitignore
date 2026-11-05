@@ -3,6 +3,7 @@
 /build/bin/
 /build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 /build/windows/nsis/wails_tools.nsh
+/build/windows/nsis/.wails-assets/
 .task/
 *.exe
 *.test

@@ -45,11 +45,22 @@ tasks:
         vars:
           PRODUCTION: "true"
     cmds:
+      - task: generate:nsis:tools
       - wails3 generate webview2bootstrapper -dir .
       - makensis -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
       ARG_FLAG: '{{if eq .ARCH "amd64"}}AMD64{{else}}ARM64{{end}}'
+
+  generate:nsis:tools:
+    summary: Generate the Wails NSIS macros required by project.nsi
+    dir: build/windows/nsis
+    cmds:
+      - wails3 update build-assets -config "{{.ROOT_DIR}}/build/config.yml" -dir .wails-assets -name "{{.APP_NAME}}" -silent
+      - cmd: powershell Copy-Item -Force .wails-assets\windows\nsis\wails_tools.nsh .\wails_tools.nsh
+        platforms: [windows]
+      - cmd: cp .wails-assets/windows/nsis/wails_tools.nsh ./wails_tools.nsh
+        platforms: [linux, darwin]
 
   run:
     cmds:
