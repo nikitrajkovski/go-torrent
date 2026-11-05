@@ -57,7 +57,8 @@ tasks:
     dir: build/windows/nsis
     cmds:
       - wails3 update build-assets -config "{{.ROOT_DIR}}/build/config.yml" -dir .wails-assets -name "{{.APP_NAME}}" -silent
-      - cmd: powershell Copy-Item -Force .wails-assets\windows\nsis\wails_tools.nsh .\wails_tools.nsh
+      # Use forward slashes: Task's command parser consumes unescaped backslashes.
+      - cmd: powershell Copy-Item -Force .wails-assets/windows/nsis/wails_tools.nsh ./wails_tools.nsh
         platforms: [windows]
       - cmd: cp .wails-assets/windows/nsis/wails_tools.nsh ./wails_tools.nsh
         platforms: [linux, darwin]
